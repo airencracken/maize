@@ -4,9 +4,10 @@
 
 This document initially assessed Arise `master` at commit `f190725` as the
 source of libraries for `github.com/airencracken/gentooling`. It was rechecked
-against Arise `b869c74` and Gentooling `4bc9357`. It describes what Maize needs
-as a Go-library consumer. It does not prescribe an Arise refactor and does not
-propose subprocess integration.
+against Arise `b869c74` and Gentooling `4bc9357`, then updated for the
+Gentooling `v0.1.0` release at `be14afc` and Arise adoption at `c83a51c`. It
+describes what Maize needs as a Go-library consumer. It does not prescribe an
+Arise refactor and does not propose subprocess integration.
 
 The central ownership rule is:
 
@@ -43,9 +44,8 @@ or silently incomplete VDB results.
 ## Recheck status
 
 Gentooling now exists as a single Go module and root package at
-`github.com/airencracken/gentooling`. It has no release tags yet; Arise consumes
-the commit through pseudo-version
-`v0.0.0-20260730194649-4bc935797792`.
+`github.com/airencracken/gentooling`. Version `v0.1.0` is its first public
+release. Arise consumes that tagged version directly.
 
 The first extraction milestone implements:
 
@@ -54,11 +54,17 @@ The first extraction milestone implements:
 - `ReadInstalled(context.Context, SystemPaths, InstalledOptions)`.
 - Installed identity, EAPI, recorded enabled and declared USE, dependencies,
   build metadata, and optional contents.
+- Structured `UseDeclaration` values retaining enabled, disabled, and
+  unspecified IUSE defaults.
 - `AllowPartial` and `RequireComplete` integrity modes.
 - Typed issue codes and errors for malformed, interrupted, corrupt, unreadable,
-  and invalid installed records.
+  invalid, and concurrently changing installed records.
+- Validated integrity and worker options.
+- Bounded concurrent record reads with deterministic output.
+- Symlink-safe metadata reads and opt-in `CONTENTS` payload loading.
 - Deterministic inventory and issue ordering.
 - Context cancellation between scanned records.
+- A documented pre-1.0 semantic-versioning and deprecation policy.
 
 Arise now imports Gentooling and delegates `internal/vdb` scans to it.
 `ScanWithIssues` exposes the typed diagnostics inside Arise. The older `Scan`
@@ -67,83 +73,69 @@ issues, so existing Arise callers retain their previous silent-partial
 semantics. This does not block Maize because Maize should call Gentooling
 directly with `RequireComplete`.
 
-The current implementation closes the first, narrow installed-inventory slice
+The `v0.1.0` implementation closes the first, narrow installed-inventory slice
 of requirements 1, 2, and 6 below. Effective configuration, profiles, USE
-evaluation, selections, atoms, repositories, snapshots, and kernel requirements
-have not yet been extracted.
+evaluation, selections, atoms, repositories, full-system snapshots, and kernel
+requirements have not yet been extracted.
 
-### Recheck findings: needed now
+### Findings resolved by `v0.1.0`
 
 #### Validate `IntegrityMode`
 
-`ReadInstalled` treats every value other than `RequireComplete` as partial
-mode. An invalid enum value such as `IntegrityMode(255)` should return
-`ErrInvalidData`, otherwise a configuration or decoding bug can silently
-downgrade a strict evidence request.
+Resolved. `ReadInstalled` rejects unknown integrity modes and negative worker
+counts with `ErrInvalidData`.
 
 #### Detect concurrent mutation
 
-`ErrConcurrentMutation` is declared but unused. The scan performs independent
-directory and file reads without a before/after generation check or shared
-package-manager lock. A package merge can therefore produce a mixture of
-states without a diagnostic. This remains a blocker for treating a scan as
-strict generation evidence.
+Resolved for installed inventory through before/after filesystem snapshots of
+the VDB root, categories, records, and read metadata. Observed changes produce
+`IssueConcurrentMutation` wrapping `ErrConcurrentMutation`; strict mode
+promotes the issue to incomplete evidence. The API correctly documents this as
+mutation detection rather than an atomic package-manager transaction snapshot.
 
 #### Do not read `CONTENTS` when excluded
 
-`CONTENTS` is correctly required as the commit marker, but
-`readInstalledRecord` reads it into memory with the other required values even
-when `IncludeContents` is false. It only suppresses copying the already-read
-value into the result. Resolver and Maize inventory scans should validate the
-regular file without reading the potentially large payload.
+Resolved. `CONTENTS` remains a required regular-file commit marker, but its
+payload is only read when `IncludeContents` is true.
 
 #### Reject path-like package identities
 
-`ParsePackageID` permits category strings accepted by
-`^[A-Za-z0-9+_.-]+$`, including `.` and `..`. These are not safe public package
-identities and can become traversal components if a consumer later joins a
-`PackageID` to a root. The parser should reject dot path components explicitly,
-and its adversarial tests should include them.
+Resolved. `ParsePackageID` explicitly rejects `.` and `..`, with adversarial
+tests for both.
 
 #### Define optional-file symlink policy
 
-Required VDB files are rejected when they are symlinks, but optional files are
-read with `os.ReadFile` without an `Lstat`, allowing an optional metadata
-symlink to escape the VDB record. Gentooling should either reject all metadata
-symlinks or document and safely constrain which ones are valid. Maize should
-not ingest evidence through an unbounded path escape.
+Resolved. Required and optional metadata use the same regular-file reader and
+symlinks are rejected.
 
 #### Add declared USE structure
 
-`DeclaredUse []string` preserves raw `IUSE` tokens such as `+ssl` and `-foo`.
-This is lossless enough for the initial extraction, but it leaves every
-consumer to parse default state. The proposed `UseDeclaration{Name, Default}`
-model is still needed before Maize compares recorded and effective USE.
+Resolved. `DeclaredUse []UseDeclaration` exposes the flag name and
+`UseDefaultEnabled`, `UseDefaultDisabled`, or `UseDefaultUnspecified`.
 
 #### Stabilize release consumption
 
-Arise currently depends on a Gentooling pseudo-version and Gentooling has no
-tags. That is appropriate during initial extraction, but Maize should begin
-consuming it only after the required API slice is tagged or an explicit
-pre-v1 compatibility policy exists.
+Resolved. Gentooling `v0.1.0` is tagged, Arise consumes the tag, and
+`COMPATIBILITY.md` defines pre-1.0 minor-release changes, patch compatibility,
+stable issue/error contracts, and deprecation expectations.
 
 ### Recheck findings: likely soon
 
 #### Separate module stability from one large root package
 
 There is currently one package containing paths, identities, issues, and VDB
-scanning. That is acceptable for the foundation. As configuration, profiles,
+scanning. That is appropriate for `v0.1.0`. As configuration, profiles,
 repository access, atoms, and kernel requirement capture arrive, Gentooling
 should expose cohesive packages or deliberately define one facade so Maize
 does not inherit a large, tightly coupled root namespace.
 
 #### Complete error-category coverage
 
-The installed API preserves filesystem errors and exposes integrity sentinels,
-which is a strong base. `ErrConcurrentMutation` needs real semantics, and
-not-found behavior will need a consistent contract when query APIs arrive.
-`Issue.Cause` is useful in-process but should not itself become a serialized
-schema; snapshots need stable codes and explicit fields.
+The installed API preserves filesystem errors and now gives
+`ErrConcurrentMutation` concrete semantics. Not-found behavior will need a
+consistent contract when query APIs arrive. `Issue.Cause` is useful in-process
+but should not itself become a serialized schema; snapshots need stable codes
+and explicit fields.
 
 ### Recheck findings: still missing
 
