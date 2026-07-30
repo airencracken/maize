@@ -353,6 +353,43 @@ The shared Gentooling boundary is sufficient for Maize's first real
 package-aware kernel recommendations. Further extraction should now be driven
 by concrete adapter friction rather than preemptive Portage reimplementation.
 
+## First application pipeline findings
+
+Implementing the first real `maize inspect` pipeline confirmed that installed
+inventory, selections, effective policy, atom matching, and recorded USE state
+are sufficient for reviewed package rules. It also exposed these concrete
+consumer gaps:
+
+1. Needed soon: root-aware repository configuration discovery. A live caller
+   can build `DefaultSystemPaths`, but must still supply repository names and
+   roots for cross-repository profile parents. Maize currently uses the
+   conventional `gentoo=/var/db/repos/gentoo` default and repeatable explicit
+   `--repository NAME=PATH` arguments. Parsing `repos.conf` in Maize would
+   violate the shared boundary.
+2. Needed for unprivileged inspection: an explicit snapshot lock policy. The
+   live read-only pipeline can read package metadata and the kernel config but
+   may not be permitted to open Portage's mode-restricted lock files.
+   Gentooling currently fails the entire snapshot in that case. A documented
+   strict-versus-double-observation option could retain the strongest default
+   while allowing an explicitly lockless, still-stabilized read for users who
+   cannot join the Portage state-lock group.
+3. Needed when prospective recommendations begin: repository candidate
+   discovery and metadata. Visibility and USE evaluation accept a candidate's
+   identity, KEYWORDS, and IUSE, but Gentooling does not yet locate candidate
+   versions or provide those fields.
+4. Likely soon: snapshot-bound visibility and USE evaluation. The combined
+   snapshot exposes translated effective configuration data, not an evaluation
+   handle, so a prospective analysis requires another configuration read.
+5. Product work, not automatically Gentooling work: explicit ebuild/eclass
+   kernel requirements. The current pipeline uses reviewed Maize rules because
+   installed package metadata does not encode calls such as
+   `check_extra_config`. A shared API is justified only after Arise and Maize
+   identify a safe structured source for those requirements.
+
+No additional Gentooling API blocks installed-package inspection. Hardware
+collection, target-Kconfig validation, broader reviewed rules, and generation
+are now Maize work.
+
 ## Needed now
 
 ### 1. Installed package inventory

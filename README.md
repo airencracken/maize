@@ -5,20 +5,23 @@ It combines current and previously observed hardware, Portage state, installed
 package USE flags, operator profiles, an existing kernel configuration, and the
 target kernel's Kconfig model.
 
-Maize is under active foundation development. It currently provides normalized
-kernel and evidence models, strict Linux `.config` parsing, an explanatory
-Kconfig parser, semantic migration classification, hardware inventory values,
-and strict installed-package evidence through Gentooling. See
+Maize is under active development. Its first executable pipeline is
+`maize inspect`: it reads a consistent Gentoo system snapshot and an existing
+Linux `.config`, applies reviewed installed-package and USE rules, and reports
+the kernel symbols that are already satisfied or should change. It also
+provides normalized kernel and evidence models, an explanatory Kconfig parser,
+semantic migration classification, and hardware inventory values. See
 [docs/plan.md](docs/plan.md) for the product plan and
 [docs/architecture.md](docs/architecture.md) for component boundaries.
 
 See [docs/prior-art.md](docs/prior-art.md) for acknowledgment of earlier work,
 including nichoski/kergen.
 
-## Intended commands
+## Commands
 
 ```text
-maize inspect
+maize inspect --config /usr/src/linux/.config
+maize inspect --format json
 maize generate
 maize migrate --target /usr/src/linux
 maize check
@@ -28,6 +31,14 @@ maize impact --config ./proposed.config
 The intended output is a validated `.config` plus an audit report explaining
 each material decision, its evidence, its confidence, and any unresolved
 operator choices.
+
+`inspect` is implemented and read-only. The remaining commands describe the
+planned workflow and currently report that they are not implemented.
+
+Consistent snapshots observe Portage state locks. Run `inspect` as a user that
+can read those lock files. Additional repositories can be supplied with
+repeatable `--repository NAME=PATH` options until Gentooling provides
+root-aware repository configuration discovery.
 
 ## Development
 

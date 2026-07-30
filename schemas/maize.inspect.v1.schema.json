@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.inspect.v1.schema.json",
+  "title": "Maize inspection report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "installed_count",
+    "world_selections",
+    "system_selections",
+    "recommendations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "maize.inspect/v1"
+    },
+    "installed_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "world_selections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selection"
+      }
+    },
+    "system_selections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selection"
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recommendation"
+      }
+    }
+  },
+  "$defs": {
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "kind", "source", "detail"],
+      "properties": {
+        "value": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["package", "set"]},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source", "detail", "confidence"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["certain", "high", "medium", "low"]}
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "disposition",
+        "symbol",
+        "current",
+        "desired",
+        "action",
+        "detail",
+        "evidence"
+      ],
+      "properties": {
+        "capability": {"type": "string", "minLength": 1},
+        "disposition": {
+          "enum": ["required", "recommended", "optional", "prohibited"]
+        },
+        "symbol": {"type": "string", "pattern": "^CONFIG_[A-Za-z0-9_]+$"},
+        "current": {
+          "type": ["string", "null"]
+        },
+        "desired": {"type": "string"},
+        "action": {"enum": ["keep", "enable", "disable", "change"]},
+        "detail": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    }
+  }
+}

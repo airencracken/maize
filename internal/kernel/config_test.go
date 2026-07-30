@@ -41,7 +41,7 @@ func TestParseConfigRejectsDuplicateMalformedAndOversizedInput(t *testing.T) {
 		"malformed":  "CONFIG_TEST\n",
 		"hostile":    "CONFIG_GOOD=y\n../../escape\n",
 		"bad value":  "CONFIG_TEST=maybe\n",
-		"bad symbol": "CONFIG_bad=y\n",
+		"bad symbol": "CONFIG_bad.symbol=y\n",
 	}
 	for name, input := range tests {
 		input := input
@@ -55,6 +55,23 @@ func TestParseConfigRejectsDuplicateMalformedAndOversizedInput(t *testing.T) {
 	oversized := "CONFIG_TEST=\"" + strings.Repeat("x", 4*1024*1024+1) + "\"\n"
 	if _, err := kernel.ParseConfig("oversized", strings.NewReader(oversized)); err == nil {
 		t.Fatal("oversized line accepted")
+	}
+}
+
+func TestParseConfigAcceptsMixedCaseKernelSymbol(t *testing.T) {
+	t.Parallel()
+
+	config, err := kernel.ParseConfig(
+		"real.config",
+		strings.NewReader("# CONFIG_SCSI_DC395x is not set\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	symbol := mustSymbol(t, "CONFIG_SCSI_DC395x")
+	entry, found := config.Get(symbol)
+	if !found || entry.State != kernel.No() {
+		t.Fatalf("entry = %#v, found %v", entry, found)
 	}
 }
 

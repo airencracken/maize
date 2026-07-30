@@ -16,7 +16,8 @@ func ParseSymbol(value string) (Symbol, error) {
 		return "", errors.New("kernel symbol is empty")
 	}
 	for _, r := range value {
-		if r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' ||
+			r >= '0' && r <= '9' || r == '_' {
 			continue
 		}
 		return "", fmt.Errorf("invalid kernel symbol %q", value)

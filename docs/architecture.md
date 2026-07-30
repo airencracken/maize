@@ -91,11 +91,17 @@ provenance, explanations, strict `.config` parsing, Kconfig definition parsing,
 and semantic migration classification.
 
 Gentooling remains the sole owner of package-manager truth. Maize consumes its
-installed inventory, ordered active-profile graph, and effective configuration.
-Until Gentooling exports final per-package USE evaluation, selections, and
-combined snapshots, Maize accepts fixture-fed or typed evidence for those
-surfaces only. It does not parse `/etc/portage`, profiles, world files, or
+consistent installed/configuration/selection snapshot, ordered active-profile
+graph, effective USE evaluation, and prospective visibility policy. Maize does
+not parse `/etc/portage`, profiles, world files, repository keyword policy, or
 ebuild policy itself.
+
+The first application pipeline implements `maize inspect`. It translates
+reviewed installed-package and recorded-USE rules into capabilities, resolves
+them, maps them to curated kernel symbols, compares them with an existing
+`.config`, and emits deterministic text or versioned JSON. This pipeline is
+read-only and does not yet claim hardware completeness or target-Kconfig
+validation.
 
 ### `cmd/maize`
 
