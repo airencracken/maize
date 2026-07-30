@@ -271,6 +271,45 @@ The next highest-value extraction is selections and the combined consistency
 contract. Keyword/visibility evaluation should follow before Maize recommends
 prospective package-state changes.
 
+## Gentooling v0.5.0 update
+
+Gentooling `v0.5.0` resolves the remaining package-state aggregation boundary:
+
+- Typed, deterministic world and effective profile system selections,
+  distinguishing package atoms from named sets and retaining source lines.
+- A combined snapshot of installed inventory, effective configuration/profile
+  policy, and selections.
+- Portage-compatible shared-lock observation for VDB and world state.
+- Two agreeing complete observations, with persistent change reported as
+  `ErrConcurrentMutation` instead of mixed evidence.
+
+Arise consumes `v0.5.0` through the same snapshot contract. Maize now exposes a
+data-only snapshot adapter that requires complete installed evidence, omits
+CONTENTS payloads, accepts only an explicit command environment, and translates
+selection provenance without weakening Gentooling's consistency guarantee.
+
+Resolved consumer requirements:
+
+- World and system selection provenance is available.
+- Installed packages, effective policy, active profile, and selections can be
+  reasoned about as one consistent input.
+- Cooperating Portage and Arise writers are observed through their state locks.
+
+Remaining consumer feedback, ranked:
+
+1. Needed now: none for the originally requested package-state boundary.
+2. Likely soon: keyword and visibility policy that authoritatively determines
+   stability for prospective package contexts.
+3. Likely soon: winning-assignment provenance for effective non-USE variables.
+4. Likely soon: source line provenance for profile-global policy.
+5. Speculative: typed constants for `UseEvidence.Kind` and `UseEvidence.Layer`.
+6. Speculative: named-set expansion if Maize eventually needs the packages
+   transitively selected by sets rather than the selection itself.
+
+Maize can now proceed from fixture-fed package adapters to consistent real
+Gentoo package-state evidence. Keyword/visibility evaluation is the next
+important shared extraction before recommending prospective package changes.
+
 ## Needed now
 
 ### 1. Installed package inventory
