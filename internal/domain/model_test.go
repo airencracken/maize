@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcus/maize/internal/domain"
+	"github.com/airencracken/maize/internal/domain"
 )
 
 func TestRequirementValidate(t *testing.T) {

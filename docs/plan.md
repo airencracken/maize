@@ -10,17 +10,19 @@ It is intentionally Gentoo-specific. Portage, Gentoo profiles, ebuild metadata,
 USE flags, selected kernel sources, initramfs tooling, and out-of-tree modules
 are core inputs rather than optional distribution adapters.
 
-Maize consumes reusable Go libraries from Arise, the alternative Gentoo package
-manager. Arise owns general Portage and package functionality; Maize owns the
-translation from Gentoo system intent to kernel capabilities and Kconfig
-decisions. Until those libraries have stable package APIs, the dependency is
-represented as an architectural boundary rather than a guessed import path.
+Maize consumes reusable Go libraries extracted from Arise through
+`github.com/airencracken/gentooling`. Gentooling owns general Portage and
+package functionality; Maize owns the translation from Gentoo system intent to
+kernel capabilities and Kconfig decisions. Until Gentooling has stable package
+APIs, the dependency is represented as an architectural boundary without a
+premature module requirement.
 
 Maize must never invoke Arise or package-querying commands such as `equery`,
 `q`, or `portageq` as subprocesses. If Maize needs package-manager functionality
-that Arise does not yet expose, that functionality must first become an Arise
-library API. This applies equally to temporary implementations: command output
-is not an integration contract.
+that Gentooling does not yet expose, that functionality must first become a
+Gentooling library API, normally by extracting it from Arise. This applies
+equally to temporary implementations: command output is not an integration
+contract.
 
 ## Goals
 
@@ -189,16 +191,16 @@ maize observe
 
 ### 4. Model Portage requirements
 
-- Integrate Arise libraries for installed package metadata, effective USE
+- Integrate Gentooling libraries for installed package metadata, effective USE
   flags, profile state, and ebuild/eclass metadata.
-- Extract explicit kernel requirements from Arise-provided package data where
-  safe.
+- Extract explicit kernel requirements from Gentooling-provided package data
+  where safe.
 - Add reviewed package capability rules.
 - Implement configuration impact analysis.
 
 Maize must not grow a second general-purpose Portage implementation while these
-capabilities are being extracted into Arise libraries. A narrow in-process
-adapter around Arise's Go APIs is acceptable when it preserves a replaceable
+capabilities are being extracted into Gentooling. A narrow in-process adapter
+around Gentooling's Go APIs is acceptable when it preserves a replaceable
 boundary and is covered by contract fixtures. Subprocess adapters are not.
 
 ### 5. Generate and optimize

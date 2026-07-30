@@ -1,4 +1,4 @@
-package arise
+package gentooling
 
 import (
 	"go/ast"
@@ -28,7 +28,7 @@ func TestPackageDoesNotUseSubprocesses(t *testing.T) {
 		}
 		for _, spec := range file.Imports {
 			if importPath(spec) == "os/exec" {
-				t.Errorf("%s imports os/exec; Arise integration must use in-process libraries", entry.Name())
+				t.Errorf("%s imports os/exec; Gentooling integration must use in-process libraries", entry.Name())
 			}
 		}
 	}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/marcus/maize/internal/domain"
+	"github.com/airencracken/maize/internal/domain"
 )
 
 var ErrConflict = errors.New("requirements conflict")

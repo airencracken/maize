@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/marcus/maize/internal/domain"
-	"github.com/marcus/maize/internal/resolve"
+	"github.com/airencracken/maize/internal/domain"
+	"github.com/airencracken/maize/internal/resolve"
 )
 
 func TestRequirementsCombinesEvidenceAndUsesStrongestDisposition(t *testing.T) {

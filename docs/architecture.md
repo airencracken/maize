@@ -29,21 +29,23 @@ This package must not know how evidence was collected.
 Loads versioned TOML profiles, resolves inheritance, validates policy, and
 compiles stable capabilities into domain requirements.
 
-### `internal/arise`
+### `internal/gentooling`
 
-Adapts reusable Arise libraries into Maize's domain vocabulary. Arise provides
-general Gentoo package data: installed packages, effective USE flags, Portage
-profiles, package configuration, and ebuild/eclass metadata.
+Adapts `github.com/airencracken/gentooling` libraries into Maize's domain
+vocabulary. Gentooling provides general Gentoo package data extracted from
+Arise: installed packages, effective USE flags, Portage profiles, package
+configuration, and ebuild/eclass metadata.
 
-The adapter prevents Arise's package model from leaking into the Kconfig
+The adapter prevents Gentooling's package model from leaking into the Kconfig
 resolver and gives Maize stable contract fixtures while the libraries are
 extracted. It is intentionally not a cross-distribution package-provider
 interface.
 
 This integration is exclusively in-process Go library use. The package may not
 execute `arise`, `equery`, `q`, `portageq`, or any other package-query command.
-Missing functionality is implemented and exported by Arise, then consumed by
-Maize. The architecture test for this package rejects imports of `os/exec`.
+Missing functionality is implemented and exported by Gentooling, normally by
+extracting it from Arise, then consumed by Maize. The architecture test for
+this package rejects imports of `os/exec`.
 
 ### `internal/gentoo`
 
@@ -89,9 +91,10 @@ not live in the CLI package.
 
 - A capability is stable operator intent such as `containers`, `root-ext4`, or
   `intel-wifi`, not a Kconfig symbol.
-- Arise reports package truth; Maize decides what that truth means for a kernel
-  configuration.
-- Package-manager access is through Arise Go APIs only, never subprocess output.
+- Gentooling reports package truth; Maize decides what that truth means for a
+  kernel configuration.
+- Package-manager access is through Gentooling Go APIs only, never subprocess
+  output.
 - Requirements from multiple sources accumulate rather than overwrite.
 - A required and prohibited state for the same capability is a conflict.
 - Stronger evidence may determine a recommendation, but it cannot silently
