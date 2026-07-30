@@ -310,6 +310,49 @@ Maize can now proceed from fixture-fed package adapters to consistent real
 Gentoo package-state evidence. Keyword/visibility evaluation is the next
 important shared extraction before recommending prospective package changes.
 
+## Gentooling v0.6.0 update
+
+Gentooling `v0.6.0` adds authoritative prospective package visibility:
+
+- Typed visible, package-masked, keyword-masked, and
+  unsupported-architecture outcomes.
+- Effective global and package-specific keyword policy with ordered changes
+  and source provenance.
+- Repository, active-profile, and user mask/unmask stacks with removal
+  semantics and mask rationale.
+- An authoritative stability result for downstream stable-only USE policy.
+
+Arise consumes `v0.6.0`. Maize now evaluates visibility and USE policy from one
+effective configuration read. The visibility result supplies the `Stable`
+input to Gentooling's USE evaluator, removing the temporary caller-supplied
+stability assumption from prospective package analysis. Ordinary package or
+keyword rejection remains explainable evidence rather than an operational
+error.
+
+Resolved consumer requirements:
+
+- Maize can distinguish a stable candidate from a testing candidate using
+  effective Gentoo policy.
+- Stable-only USE force/mask policy can be applied without local keyword
+  parsing or inference.
+- Package mask reasons and keyword policy inputs can appear in operator-facing
+  explanations.
+
+Remaining consumer feedback, ranked:
+
+1. Needed now: none for package state, selection, visibility, and USE policy.
+2. Likely soon: winning-assignment provenance for effective non-USE variables.
+3. Likely soon: source line provenance for profile-global policy.
+4. Likely soon: a snapshot-bound prospective evaluation API if Maize must
+   guarantee that repository candidate policy is evaluated against the exact
+   same observation as installed state and selections.
+5. Speculative: typed constants for visibility and USE evidence kinds/layers.
+6. Speculative: named-set expansion.
+
+The shared Gentooling boundary is sufficient for Maize's first real
+package-aware kernel recommendations. Further extraction should now be driven
+by concrete adapter friction rather than preemptive Portage reimplementation.
+
 ## Needed now
 
 ### 1. Installed package inventory
