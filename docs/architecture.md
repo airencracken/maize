@@ -53,18 +53,19 @@ Owns kernel-specific Gentoo integration not provided by Arise: selected kernel
 sources, distribution kernel configuration, initramfs policy, boot integration,
 and out-of-tree module compatibility.
 
-### `internal/inventory`
+### `internal/hardware`
 
-Collects current hardware and operating state and merges it with persisted
-peripheral history. Collection and persistence remain separate so fixtures can
-exercise resolution without access to host hardware.
+Defines current, historical, and operator-declared hardware evidence with
+source and observation-time provenance. Collection and persistence remain
+separate so fixtures can exercise resolution without access to host hardware.
 
-### `internal/kconfig`
+### `internal/kernel`
 
-Indexes symbol definitions, prompts, help, types, defaults, ranges,
-dependencies, choices, `select`, `imply`, and source locations. It explains
-semantic differences but delegates final evaluation to kernel-provided Kconfig
-tools.
+Normalizes symbols and typed configuration states, parses `.config` files, and
+indexes the explanatory subset of Kconfig definitions: prompts, help, types,
+defaults, dependencies, `select`, `imply`, and source locations. It classifies
+semantic differences but delegates expression evaluation, visibility, choices,
+and final configuration validation to kernel-provided Kconfig tools.
 
 ### `internal/resolve`
 
@@ -77,10 +78,22 @@ error cannot return a partial plan.
 Produces deterministic human-readable output and versioned JSON. JSON schemas
 are public compatibility contracts.
 
-### `internal/kernel`
+### `internal/kernel/runner`
 
-Runs target Kconfig commands in isolated output directories, captures resulting
+The future command runner should be a subpackage of the kernel boundary. It
+runs target Kconfig commands in isolated output directories, captures resulting
 changes, and never mutates the source tree or operator's input configuration.
+
+## Current implementation boundary
+
+Maize now owns normalized kernel symbols and states, hardware inventory values,
+provenance, explanations, strict `.config` parsing, Kconfig definition parsing,
+and semantic migration classification.
+
+Gentooling remains the sole owner of package-manager truth. Until it exports
+effective Portage configuration, profiles, ordered USE policy, selections, and
+combined snapshots, Maize accepts fixture-fed or typed package evidence only.
+It does not parse `/etc/portage`, profiles, world files, or ebuild policy.
 
 ### `cmd/maize`
 

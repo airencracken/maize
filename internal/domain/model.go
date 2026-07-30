@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 type Disposition string
@@ -45,6 +46,52 @@ type Evidence struct {
 	Source     string
 	Detail     string
 	Confidence Confidence
+}
+
+// Provenance identifies where a fact came from and, when applicable, when it
+// was observed. It contains no collection behavior or process-global state.
+type Provenance struct {
+	Kind       SourceKind
+	Source     string
+	Detail     string
+	ObservedAt time.Time
+}
+
+func (p Provenance) Validate() error {
+	if !validSourceKind(p.Kind) {
+		return fmt.Errorf("invalid provenance kind %q", p.Kind)
+	}
+	if strings.TrimSpace(p.Source) == "" {
+		return errors.New("provenance source is required")
+	}
+	if strings.TrimSpace(p.Detail) == "" {
+		return errors.New("provenance detail is required")
+	}
+	return nil
+}
+
+// Explanation is the operator-facing reason for a conclusion. Evidence is
+// retained separately so renderers can show a concise summary or a full audit.
+type Explanation struct {
+	Summary    string
+	Detail     string
+	Confidence Confidence
+	Provenance []Provenance
+}
+
+func (e Explanation) Validate() error {
+	if strings.TrimSpace(e.Summary) == "" {
+		return errors.New("explanation summary is required")
+	}
+	if !validConfidence(e.Confidence) {
+		return fmt.Errorf("invalid confidence %q", e.Confidence)
+	}
+	for index, provenance := range e.Provenance {
+		if err := provenance.Validate(); err != nil {
+			return fmt.Errorf("provenance %d: %w", index, err)
+		}
+	}
+	return nil
 }
 
 func (e Evidence) Validate() error {

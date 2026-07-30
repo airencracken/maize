@@ -1,0 +1,12 @@
+#
+# Automatically generated file; DO NOT EDIT.
+# Linux/x86 5.10.76-gentoo-r1 Kernel Configuration
+#
+CONFIG_CC_VERSION_TEXT="gcc (Gentoo 11.2.1_p20220115 p4) 11.2.1 20220115"
+CONFIG_LOCALVERSION="-x86_64"
+# CONFIG_PREEMPT is not set
+CONFIG_SECCOMP=y
+CONFIG_SECCOMP_FILTER=y
+CONFIG_NVME_CORE=y
+CONFIG_EXT4_FS=y
+CONFIG_BTRFS_FS=y

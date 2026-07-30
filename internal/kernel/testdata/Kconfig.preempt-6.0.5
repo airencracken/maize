@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config PREEMPT
+	bool "Preemptible Kernel (Low-Latency Desktop)"
+	depends on !ARCH_NO_PREEMPT
+	select PREEMPT_BUILD
+	help
+	  This option reduces latency by making most kernel code preemptible.
+
+config PREEMPT_DYNAMIC
+	bool "Preemption behaviour defined on boot"
+	depends on HAVE_PREEMPT_DYNAMIC && !PREEMPT_RT
+	select JUMP_LABEL if HAVE_PREEMPT_DYNAMIC_KEY
+	select PREEMPT_BUILD
+	default y if HAVE_PREEMPT_DYNAMIC_CALL
+	help
+	  This option allows the preemption model to be selected at boot.

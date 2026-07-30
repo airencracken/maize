@@ -5,9 +5,12 @@ It combines current and previously observed hardware, Portage state, installed
 package USE flags, operator profiles, an existing kernel configuration, and the
 target kernel's Kconfig model.
 
-Maize is currently an architectural sketch. See [docs/plan.md](docs/plan.md) for
-the product plan and [docs/architecture.md](docs/architecture.md) for the
-initial component boundaries.
+Maize is under active foundation development. It currently provides normalized
+kernel and evidence models, strict Linux `.config` parsing, an explanatory
+Kconfig parser, semantic migration classification, hardware inventory values,
+and strict installed-package evidence through Gentooling. See
+[docs/plan.md](docs/plan.md) for the product plan and
+[docs/architecture.md](docs/architecture.md) for component boundaries.
 
 ## Intended commands
 
