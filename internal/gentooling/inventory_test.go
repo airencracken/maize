@@ -76,7 +76,7 @@ func TestInstalledPackageEvidenceResolvesEndToEnd(t *testing.T) {
 		t.Fatalf("read installed: %v", err)
 	}
 	requirements, err := maizegentoo.Requirements(inventory, []maizegentoo.Rule{{
-		Package:     "app-containers/docker",
+		Atom:        "app-containers/docker",
 		UseFlag:     "seccomp",
 		Capability:  "security.seccomp-filter",
 		Disposition: domain.Required,
@@ -119,17 +119,17 @@ func TestRequirementsUsesInstalledPackageAndRecordedUseEvidence(t *testing.T) {
 	}}
 	rules := []maizegentoo.Rule{
 		{
-			Package: "app-containers/docker", UseFlag: "seccomp",
+			Atom: "app-containers/docker", UseFlag: "seccomp",
 			Capability: "security.seccomp-filter", Disposition: domain.Required,
 			Confidence: domain.Certain, Detail: "Docker was built with seccomp support",
 		},
 		{
-			Package: "app-containers/docker", UseFlag: "apparmor",
+			Atom: "app-containers/docker", UseFlag: "apparmor",
 			Capability: "security.apparmor", Disposition: domain.Required,
 			Confidence: domain.Certain, Detail: "Docker was built with AppArmor support",
 		},
 		{
-			Package:    "app-containers/docker",
+			Atom:       "app-containers/docker",
 			Capability: "containers", Disposition: domain.Recommended,
 			Confidence: domain.High, Detail: "Docker is installed",
 		},
@@ -152,6 +152,41 @@ func TestRequirementsUsesInstalledPackageAndRecordedUseEvidence(t *testing.T) {
 	}
 }
 
+func TestRequirementsMatchesVersionSlotRepositoryAndUseAtom(t *testing.T) {
+	t.Parallel()
+
+	inventory := shared.InstalledInventory{Packages: []shared.InstalledPackage{{
+		ID: shared.PackageID{
+			Category: "app-containers", Name: "docker", Version: "28.3.2",
+			Slot: "0", Repository: "gentoo",
+		},
+		DeclaredUse: []shared.UseDeclaration{{Name: "seccomp"}},
+		EnabledUse:  []string{"seccomp"},
+	}}}
+	rule := maizegentoo.Rule{
+		Atom:       ">=app-containers/docker-28:0::gentoo[seccomp]",
+		Capability: "security.seccomp-filter", Disposition: domain.Required,
+		Confidence: domain.Certain, Detail: "matching structured atom",
+	}
+
+	got, err := maizegentoo.Requirements(inventory, []maizegentoo.Rule{rule})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Capability != rule.Capability {
+		t.Fatalf("requirements = %#v", got)
+	}
+
+	rule.Atom = ">=app-containers/docker-29:0::gentoo[seccomp]"
+	got, err = maizegentoo.Requirements(inventory, []maizegentoo.Rule{rule})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("nonmatching atom produced requirements: %#v", got)
+	}
+}
+
 func TestRequirementsIsOrderIndependent(t *testing.T) {
 	t.Parallel()
 
@@ -163,12 +198,12 @@ func TestRequirementsIsOrderIndependent(t *testing.T) {
 		ID: shared.PackageID{Category: "app-containers", Name: "docker", Version: "28.3.2"},
 	}
 	firstRule := maizegentoo.Rule{
-		Package: "sys-fs/cryptsetup", Capability: "storage.dm-crypt",
+		Atom: "sys-fs/cryptsetup", Capability: "storage.dm-crypt",
 		Disposition: domain.Recommended, Confidence: domain.High,
 		Detail: "cryptsetup is installed",
 	}
 	secondRule := maizegentoo.Rule{
-		Package: "app-containers/docker", Capability: "containers",
+		Atom: "app-containers/docker", Capability: "containers",
 		Disposition: domain.Recommended, Confidence: domain.High,
 		Detail: "Docker is installed",
 	}
@@ -200,12 +235,12 @@ func TestRequirementsRejectsInvalidRulesAtomically(t *testing.T) {
 	}}}
 	rules := []maizegentoo.Rule{
 		{
-			Package: "app-containers/docker", Capability: "containers",
+			Atom: "app-containers/docker", Capability: "containers",
 			Disposition: domain.Required, Confidence: domain.Certain,
 			Detail: "valid evidence",
 		},
 		{
-			Package: "../escape", Capability: "hostile",
+			Atom: "../escape", Capability: "hostile",
 			Disposition: domain.Required, Confidence: domain.Certain,
 			Detail: "invalid evidence",
 		},
@@ -226,16 +261,16 @@ func TestRuleValidationRejectsAdversarialInputs(t *testing.T) {
 	tests := []maizegentoo.Rule{
 		{},
 		{
-			Package: "../escape", Capability: "valid", Disposition: domain.Required,
+			Atom: "../escape", Capability: "valid", Disposition: domain.Required,
 			Confidence: domain.Certain, Detail: "test",
 		},
 		{
-			Package: "app-misc/example", UseFlag: "flag\ninjected",
+			Atom: "app-misc/example", UseFlag: "flag\ninjected",
 			Capability: "valid", Disposition: domain.Required,
 			Confidence: domain.Certain, Detail: "test",
 		},
 		{
-			Package: "app-misc/example", Capability: "CONFIG_RAW_SYMBOL",
+			Atom: "app-misc/example", Capability: "CONFIG_RAW_SYMBOL",
 			Disposition: domain.Required, Confidence: domain.Certain, Detail: "test",
 		},
 	}
@@ -252,7 +287,7 @@ func FuzzRuleValidationNeverPanics(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, pkg, use, capability string) {
 		rule := maizegentoo.Rule{
-			Package: pkg, UseFlag: use, Capability: capability,
+			Atom: pkg, UseFlag: use, Capability: capability,
 			Disposition: domain.Required, Confidence: domain.Low, Detail: "fuzz input",
 		}
 		_ = rule.Validate()

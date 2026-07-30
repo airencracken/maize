@@ -230,6 +230,47 @@ Remaining consumer feedback:
 The next highest-value extraction is final structured USE evaluation, followed
 by world/system selections and the combined consistency contract.
 
+## Gentooling v0.4.0 update
+
+Gentooling `v0.4.0` adds the two package-policy contracts Maize had deliberately
+left unimplemented:
+
+- Public Gentoo atom and version parsing and matching, including versions,
+  slots, repositories, and USE dependencies.
+- Deterministic per-package USE evaluation over declared IUSE defaults,
+  profile and user policy, command input, masks, forces, stable-only policy,
+  and package-scoped rules, with ordered evidence.
+
+Arise already consumes `v0.4.0` for shared package matching. Maize now uses the
+same matcher for kernel-capability rules and exposes effective USE decisions
+through a data-only adapter. Recorded installed USE remains distinct from
+effective policy: the former says what an installed package was built with;
+the latter supports prospective configuration analysis.
+
+Resolved consumer requirements:
+
+- Maize no longer needs an exact-CP limitation or a competing atom parser.
+- IUSE filtering, defaults, package-rule matching, mask/force precedence, and
+  stable-only policy evaluation remain Gentooling responsibilities.
+- Failed reads and evaluations return no partial Maize evidence.
+
+Remaining consumer feedback, ranked:
+
+1. Needed now: world and system selections with provenance.
+2. Needed now: a combined, consistent snapshot of installed inventory,
+   effective configuration, profile policy, and selections.
+3. Likely soon: keyword and visibility policy that can determine whether a
+   prospective package context is stable. `EvaluateUse` correctly makes
+   stability explicit, but Maize cannot infer it authoritatively yet.
+4. Likely soon: winning-assignment provenance for effective non-USE variables.
+5. Likely soon: source line provenance for profile-global policy.
+6. Speculative: typed constants for `UseEvidence.Kind` and `UseEvidence.Layer`
+   to make the consumer mapping compile-time checked.
+
+The next highest-value extraction is selections and the combined consistency
+contract. Keyword/visibility evaluation should follow before Maize recommends
+prospective package-state changes.
+
 ## Needed now
 
 ### 1. Installed package inventory

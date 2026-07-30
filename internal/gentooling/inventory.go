@@ -10,14 +10,11 @@ import (
 	"github.com/airencracken/maize/internal/domain"
 )
 
-// Rule maps reviewed package state to a stable Maize capability. Package is an
-// exact category/package identity. UseFlag, when present, requires that the
+// Rule maps reviewed package state to a stable Maize capability. Atom is a
+// Gentoo package atom. UseFlag, when present, requires that the
 // recorded installed package was built with that flag enabled.
-//
-// Rule deliberately does not accept Gentoo dependency atoms. Gentooling does
-// not export atom matching yet, and Maize must not grow a competing parser.
 type Rule struct {
-	Package     string
+	Atom        string
 	UseFlag     string
 	Capability  string
 	Disposition domain.Disposition
@@ -26,8 +23,8 @@ type Rule struct {
 }
 
 func (r Rule) Validate() error {
-	if !validCP(r.Package) {
-		return fmt.Errorf("invalid exact package identity %q", r.Package)
+	if _, err := gentooling.ParseAtom(r.Atom); err != nil {
+		return fmt.Errorf("invalid package atom %q: %w", r.Atom, err)
 	}
 	if r.UseFlag != "" && !validUseFlag(r.UseFlag) {
 		return fmt.Errorf("invalid USE flag %q", r.UseFlag)
@@ -37,7 +34,7 @@ func (r Rule) Validate() error {
 		Disposition: r.Disposition,
 		Evidence: domain.Evidence{
 			Kind:       domain.SourcePackage,
-			Source:     r.Package,
+			Source:     r.Atom,
 			Detail:     r.Detail,
 			Confidence: r.Confidence,
 		},
@@ -84,7 +81,15 @@ func Requirements(
 	var requirements []domain.Requirement
 	for _, installed := range packages {
 		for _, rule := range orderedRules {
-			if installed.ID.CP() != rule.Package || !useEnabled(installed, rule.UseFlag) {
+			atom, err := gentooling.ParseAtom(rule.Atom)
+			if err != nil {
+				return nil, fmt.Errorf("validated atom %q: %w", rule.Atom, err)
+			}
+			matches, err := atom.Matches(installed.ID, installedUseState(installed))
+			if err != nil {
+				return nil, fmt.Errorf("match atom %q against %s: %w", rule.Atom, installed.ID.CPV(), err)
+			}
+			if !matches || !useEnabled(installed, rule.UseFlag) {
 				continue
 			}
 			source := installed.ID.CPV()
@@ -121,7 +126,7 @@ func packageIdentity(pkg gentooling.InstalledPackage) string {
 
 func compareRule(left, right Rule) int {
 	for _, comparison := range []int{
-		strings.Compare(left.Package, right.Package),
+		strings.Compare(left.Atom, right.Atom),
 		strings.Compare(left.UseFlag, right.UseFlag),
 		strings.Compare(left.Capability, right.Capability),
 		strings.Compare(string(left.Disposition), string(right.Disposition)),
@@ -135,12 +140,18 @@ func compareRule(left, right Rule) int {
 	return 0
 }
 
-func validCP(value string) bool {
-	category, name, found := strings.Cut(value, "/")
-	if !found || category == "" || name == "" || strings.Contains(name, "/") {
-		return false
+func installedUseState(installed gentooling.InstalledPackage) gentooling.UseState {
+	state := gentooling.UseState{
+		Enabled:  make(map[string]bool, len(installed.EnabledUse)),
+		Declared: make(map[string]bool, len(installed.DeclaredUse)),
 	}
-	return validIdentifier(category) && validIdentifier(name)
+	for _, name := range installed.EnabledUse {
+		state.Enabled[name] = true
+	}
+	for _, declaration := range installed.DeclaredUse {
+		state.Declared[declaration.Name] = true
+	}
+	return state
 }
 
 func validUseFlag(value string) bool {
