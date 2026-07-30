@@ -40,6 +40,11 @@ resolver and gives Maize stable contract fixtures while the libraries are
 extracted. It is intentionally not a cross-distribution package-provider
 interface.
 
+This integration is exclusively in-process Go library use. The package may not
+execute `arise`, `equery`, `q`, `portageq`, or any other package-query command.
+Missing functionality is implemented and exported by Arise, then consumed by
+Maize. The architecture test for this package rejects imports of `os/exec`.
+
 ### `internal/gentoo`
 
 Owns kernel-specific Gentoo integration not provided by Arise: selected kernel
@@ -86,6 +91,7 @@ not live in the CLI package.
   `intel-wifi`, not a Kconfig symbol.
 - Arise reports package truth; Maize decides what that truth means for a kernel
   configuration.
+- Package-manager access is through Arise Go APIs only, never subprocess output.
 - Requirements from multiple sources accumulate rather than overwrite.
 - A required and prohibited state for the same capability is a conflict.
 - Stronger evidence may determine a recommendation, but it cannot silently

@@ -10,12 +10,17 @@ It is intentionally Gentoo-specific. Portage, Gentoo profiles, ebuild metadata,
 USE flags, selected kernel sources, initramfs tooling, and out-of-tree modules
 are core inputs rather than optional distribution adapters.
 
-Maize is intended to consume reusable Go libraries extracted from Arise, the
-companion emerge replacement. Arise owns general Portage and package
-functionality; Maize owns the translation from Gentoo system intent to kernel
-capabilities and Kconfig decisions. Until those libraries have stable package
-APIs, the dependency is represented as an architectural boundary rather than a
-guessed import path.
+Maize consumes reusable Go libraries from Arise, the alternative Gentoo package
+manager. Arise owns general Portage and package functionality; Maize owns the
+translation from Gentoo system intent to kernel capabilities and Kconfig
+decisions. Until those libraries have stable package APIs, the dependency is
+represented as an architectural boundary rather than a guessed import path.
+
+Maize must never invoke Arise or package-querying commands such as `equery`,
+`q`, or `portageq` as subprocesses. If Maize needs package-manager functionality
+that Arise does not yet expose, that functionality must first become an Arise
+library API. This applies equally to temporary implementations: command output
+is not an integration contract.
 
 ## Goals
 
@@ -192,9 +197,9 @@ maize observe
 - Implement configuration impact analysis.
 
 Maize must not grow a second general-purpose Portage implementation while these
-capabilities are being extracted into Arise libraries. Narrow temporary
-adapters are acceptable only when they preserve a replaceable boundary and are
-covered by contract fixtures.
+capabilities are being extracted into Arise libraries. A narrow in-process
+adapter around Arise's Go APIs is acceptable when it preserves a replaceable
+boundary and is covered by contract fixtures. Subprocess adapters are not.
 
 ### 5. Generate and optimize
 
