@@ -91,8 +91,8 @@ provenance, explanations, strict `.config` parsing, Kconfig definition parsing,
 and semantic migration classification.
 
 Gentooling remains the sole owner of package-manager truth. Maize consumes its
-installed inventory and ordered active-profile graph. Until Gentooling exports
-effective Portage configuration, final USE evaluation, selections, and
+installed inventory, ordered active-profile graph, and effective configuration.
+Until Gentooling exports final per-package USE evaluation, selections, and
 combined snapshots, Maize accepts fixture-fed or typed evidence for those
 surfaces only. It does not parse `/etc/portage`, profiles, world files, or
 ebuild policy itself.

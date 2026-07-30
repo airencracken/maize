@@ -195,6 +195,41 @@ should inform the next API:
 The next useful Gentooling extraction remains effective configuration followed
 by structured USE evaluation and world/system selection provenance.
 
+## Gentooling v0.3.0 update
+
+Gentooling `v0.3.0` at `bc89b03` adds explicit effective Portage configuration:
+
+- `make.globals`, ordered profile defaults, user `make.conf`, and user
+  `package.use`.
+- An explicitly supplied command environment; `nil` never imports process
+  state.
+- Ordered profile, user, and command USE changes with source provenance.
+- USE_EXPAND, USE_EXPAND_HIDDEN, and USE_EXPAND_IMPLICIT materialization.
+- Owned results, context cancellation, malformed assignment rejection, and
+  symlink-safe configuration policy.
+
+Arise consumes `v0.3.0` at `7341314`. Maize consumes the release through a
+data-only effective-configuration evidence adapter. This resolves the
+root-aware configuration portion of requirement 2 and supplies the ordered
+inputs for requirement 3.
+
+Remaining consumer feedback:
+
+- Final per-package USE evaluation is still absent by design. Maize must not
+  independently implement atom matching, IUSE filtering/defaults, stable
+  force/mask precedence, or overlapping package-rule reduction.
+- Effective non-USE variables are returned as a map without their winning
+  assignment provenance. Kernel explanations using `ARCH` or other variables
+  can name the effective value but cannot cite its exact source.
+- Profile-global policy still lacks source line provenance as noted in the
+  v0.2.0 review.
+- The effective configuration read is not yet combined atomically with
+  installed inventory and selections.
+- World selection provenance and the combined system snapshot remain pending.
+
+The next highest-value extraction is final structured USE evaluation, followed
+by world/system selections and the combined consistency contract.
+
 ## Needed now
 
 ### 1. Installed package inventory
