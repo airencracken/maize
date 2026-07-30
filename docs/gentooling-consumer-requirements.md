@@ -156,6 +156,45 @@ The extraction order at the end of this document remains valid. Installed
 inventory is now substantially complete once the strictness and filesystem
 issues above are addressed.
 
+## Gentooling v0.2.0 update
+
+Gentooling `v0.2.0` at `9a1c308` adds the second public consumer slice:
+
+- Explicit, root-aware active profile loading.
+- Explicit repository roots for cross-repository parents.
+- Root-to-leaf directories and layer models.
+- Merged profile defaults, system set, package.provided, force/mask policy,
+  and package-scoped USE policy.
+- Source path and line provenance for package-scoped flag rules.
+- Context cancellation, owned results, deterministic graph order, escape and
+  cycle rejection, and symlink-safe policy reads.
+
+Arise consumes `v0.2.0` at `4096614`. Maize consumes the same release through a
+data-only adapter that translates profile layers into kernel-facing evidence;
+it does not perform final USE evaluation.
+
+This completes the active profile graph portion of requirement 4 and supplies
+most profile inputs needed by requirement 3. The following consumer feedback
+should inform the next API:
+
+- `PolicySource` is attached to package-scoped rules, but `make.defaults`,
+  `packages`, `package.provided`, global `use.force`/`use.mask`, and their
+  stable variants do not retain source line numbers. Maize can cite the layer
+  file but cannot give an exact operator location.
+- Add/remove policy is encoded as string prefixes in several collections.
+  Typed policy changes would prevent each consumer from reproducing removal
+  semantics when explaining layers.
+- A profile graph read is not yet part of a combined consistency snapshot.
+  Final kernel generation still needs installed state, effective
+  configuration, selections, and profile policy captured under one documented
+  consistency contract.
+- Effective `/etc/portage` configuration and final per-package USE evaluation
+  remain absent. Maize must not treat raw profile force/mask/default layers as
+  the final installed or prospective USE state.
+
+The next useful Gentooling extraction remains effective configuration followed
+by structured USE evaluation and world/system selection provenance.
+
 ## Needed now
 
 ### 1. Installed package inventory

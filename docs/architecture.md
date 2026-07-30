@@ -90,10 +90,12 @@ Maize now owns normalized kernel symbols and states, hardware inventory values,
 provenance, explanations, strict `.config` parsing, Kconfig definition parsing,
 and semantic migration classification.
 
-Gentooling remains the sole owner of package-manager truth. Until it exports
-effective Portage configuration, profiles, ordered USE policy, selections, and
-combined snapshots, Maize accepts fixture-fed or typed package evidence only.
-It does not parse `/etc/portage`, profiles, world files, or ebuild policy.
+Gentooling remains the sole owner of package-manager truth. Maize consumes its
+installed inventory and ordered active-profile graph. Until Gentooling exports
+effective Portage configuration, final USE evaluation, selections, and
+combined snapshots, Maize accepts fixture-fed or typed evidence for those
+surfaces only. It does not parse `/etc/portage`, profiles, world files, or
+ebuild policy itself.
 
 ### `cmd/maize`
 

@@ -12,6 +12,9 @@ and strict installed-package evidence through Gentooling. See
 [docs/plan.md](docs/plan.md) for the product plan and
 [docs/architecture.md](docs/architecture.md) for component boundaries.
 
+See [docs/prior-art.md](docs/prior-art.md) for acknowledgment of earlier work,
+including nichoski/kergen.
+
 ## Intended commands
 
 ```text
