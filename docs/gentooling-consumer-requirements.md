@@ -2,10 +2,11 @@
 
 ## Scope
 
-This document assesses Arise `master` at commit `f190725` as the source of
-libraries for `github.com/airencracken/gentooling`. It describes what Maize
-needs as a Go-library consumer. It does not prescribe an Arise refactor and
-does not propose subprocess integration.
+This document initially assessed Arise `master` at commit `f190725` as the
+source of libraries for `github.com/airencracken/gentooling`. It was rechecked
+against Arise `b869c74` and Gentooling `4bc9357`. It describes what Maize needs
+as a Go-library consumer. It does not prescribe an Arise refactor and does not
+propose subprocess integration.
 
 The central ownership rule is:
 
@@ -38,6 +39,130 @@ The current code also needs a consumer boundary around paths, environment,
 diagnostics, snapshot consistency, and storage. Maize should not receive a
 `*badger.DB`, process environment, hard-coded host paths, mutable internal maps,
 or silently incomplete VDB results.
+
+## Recheck status
+
+Gentooling now exists as a single Go module and root package at
+`github.com/airencracken/gentooling`. It has no release tags yet; Arise consumes
+the commit through pseudo-version
+`v0.0.0-20260730194649-4bc935797792`.
+
+The first extraction milestone implements:
+
+- `PackageID`, `ParsePackageID`, `CP`, and `CPV`.
+- Root-relative `SystemPaths` and `DefaultSystemPaths`.
+- `ReadInstalled(context.Context, SystemPaths, InstalledOptions)`.
+- Installed identity, EAPI, recorded enabled and declared USE, dependencies,
+  build metadata, and optional contents.
+- `AllowPartial` and `RequireComplete` integrity modes.
+- Typed issue codes and errors for malformed, interrupted, corrupt, unreadable,
+  and invalid installed records.
+- Deterministic inventory and issue ordering.
+- Context cancellation between scanned records.
+
+Arise now imports Gentooling and delegates `internal/vdb` scans to it.
+`ScanWithIssues` exposes the typed diagnostics inside Arise. The older `Scan`
+and `ScanResolverState` wrappers deliberately use partial mode and discard the
+issues, so existing Arise callers retain their previous silent-partial
+semantics. This does not block Maize because Maize should call Gentooling
+directly with `RequireComplete`.
+
+The current implementation closes the first, narrow installed-inventory slice
+of requirements 1, 2, and 6 below. Effective configuration, profiles, USE
+evaluation, selections, atoms, repositories, snapshots, and kernel requirements
+have not yet been extracted.
+
+### Recheck findings: needed now
+
+#### Validate `IntegrityMode`
+
+`ReadInstalled` treats every value other than `RequireComplete` as partial
+mode. An invalid enum value such as `IntegrityMode(255)` should return
+`ErrInvalidData`, otherwise a configuration or decoding bug can silently
+downgrade a strict evidence request.
+
+#### Detect concurrent mutation
+
+`ErrConcurrentMutation` is declared but unused. The scan performs independent
+directory and file reads without a before/after generation check or shared
+package-manager lock. A package merge can therefore produce a mixture of
+states without a diagnostic. This remains a blocker for treating a scan as
+strict generation evidence.
+
+#### Do not read `CONTENTS` when excluded
+
+`CONTENTS` is correctly required as the commit marker, but
+`readInstalledRecord` reads it into memory with the other required values even
+when `IncludeContents` is false. It only suppresses copying the already-read
+value into the result. Resolver and Maize inventory scans should validate the
+regular file without reading the potentially large payload.
+
+#### Reject path-like package identities
+
+`ParsePackageID` permits category strings accepted by
+`^[A-Za-z0-9+_.-]+$`, including `.` and `..`. These are not safe public package
+identities and can become traversal components if a consumer later joins a
+`PackageID` to a root. The parser should reject dot path components explicitly,
+and its adversarial tests should include them.
+
+#### Define optional-file symlink policy
+
+Required VDB files are rejected when they are symlinks, but optional files are
+read with `os.ReadFile` without an `Lstat`, allowing an optional metadata
+symlink to escape the VDB record. Gentooling should either reject all metadata
+symlinks or document and safely constrain which ones are valid. Maize should
+not ingest evidence through an unbounded path escape.
+
+#### Add declared USE structure
+
+`DeclaredUse []string` preserves raw `IUSE` tokens such as `+ssl` and `-foo`.
+This is lossless enough for the initial extraction, but it leaves every
+consumer to parse default state. The proposed `UseDeclaration{Name, Default}`
+model is still needed before Maize compares recorded and effective USE.
+
+#### Stabilize release consumption
+
+Arise currently depends on a Gentooling pseudo-version and Gentooling has no
+tags. That is appropriate during initial extraction, but Maize should begin
+consuming it only after the required API slice is tagged or an explicit
+pre-v1 compatibility policy exists.
+
+### Recheck findings: likely soon
+
+#### Separate module stability from one large root package
+
+There is currently one package containing paths, identities, issues, and VDB
+scanning. That is acceptable for the foundation. As configuration, profiles,
+repository access, atoms, and kernel requirement capture arrive, Gentooling
+should expose cohesive packages or deliberately define one facade so Maize
+does not inherit a large, tightly coupled root namespace.
+
+#### Complete error-category coverage
+
+The installed API preserves filesystem errors and exposes integrity sentinels,
+which is a strong base. `ErrConcurrentMutation` needs real semantics, and
+not-found behavior will need a consistent contract when query APIs arrive.
+`Issue.Cause` is useful in-process but should not itself become a serialized
+schema; snapshots need stable codes and explicit fields.
+
+### Recheck findings: still missing
+
+No Gentooling APIs currently exist for:
+
+- Effective Portage configuration.
+- Profile graphs and profile policy.
+- USE evaluation or provenance.
+- World/system selections.
+- Gentoo dependency atoms and matching.
+- Consistent system snapshots or fingerprints.
+- Repository metadata/querying.
+- Installed file ownership.
+- Out-of-tree kernel module classification.
+- Structured `linux-info`/Kconfig requirements.
+
+The extraction order at the end of this document remains valid. Installed
+inventory is now substantially complete once the strictness and filesystem
+issues above are addressed.
 
 ## Needed now
 
