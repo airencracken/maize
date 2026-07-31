@@ -343,6 +343,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	procfs := flags.String("procfs", "", "procfs root; default ROOT/proc")
 	format := flags.String("format", "text", "output format: text or json")
 	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
+	verbose := flags.Bool("verbose", false, "include inactive symbol churn")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -372,7 +373,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if artifactCount == 0 {
-		return runDefaultMigrate(*root, *procfs, *format, mode, stdout, stderr)
+		return runDefaultMigrate(*root, *procfs, *format, mode, *verbose, stdout, stderr)
 	}
 	oldCatalog, err := readKconfig(*oldKconfig)
 	if err != nil {
@@ -398,8 +399,10 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	if *format == "json" {
 		err = report.MigrationJSON(stdout, changes)
 	} else {
-		err = report.MigrationTextStyled(
-			stdout, changes, terminal.StyleForWriter(mode, stdout),
+		err = report.MigrationTextWithOptions(
+			stdout, changes, report.MigrationTextOptions{
+				Style: terminal.StyleForWriter(mode, stdout), Verbose: *verbose,
+			},
 		)
 	}
 	if err != nil {
@@ -414,6 +417,7 @@ func runDefaultMigrate(
 	procfs string,
 	format string,
 	mode terminal.ColorMode,
+	verbose bool,
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
@@ -455,10 +459,12 @@ func runDefaultMigrate(
 		TargetTree:     inventory.Target.Path,
 	}
 	if format == "json" {
-		err = report.MigrationJSONWithContext(stdout, reportContext, changes)
+		err = report.MigrationJSONPrioritized(stdout, reportContext, changes)
 	} else {
-		err = report.MigrationTextWithContext(
-			stdout, reportContext, changes, terminal.StyleForWriter(mode, stdout),
+		err = report.MigrationTextWithContextOptions(
+			stdout, reportContext, changes, report.MigrationTextOptions{
+				Style: terminal.StyleForWriter(mode, stdout), Verbose: verbose,
+			},
 		)
 	}
 	if err != nil {

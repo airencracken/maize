@@ -30,8 +30,15 @@ func HardwareJSON(writer io.Writer, inventory hardware.Inventory) error {
 }
 
 func MigrationText(writer io.Writer, changes []kernel.Change) error {
-	return MigrationTextStyled(writer, changes, terminal.Style{})
+	return MigrationTextWithOptions(writer, changes, MigrationTextOptions{Verbose: true})
 }
+
+type MigrationTextOptions struct {
+	Style   terminal.Style
+	Verbose bool
+}
+
+const defaultMigrationGroupLimit = 12
 
 func MigrationTextWithContext(
 	writer io.Writer,
@@ -39,6 +46,18 @@ func MigrationTextWithContext(
 	changes []kernel.Change,
 	style terminal.Style,
 ) error {
+	return MigrationTextWithContextOptions(
+		writer, context, changes, MigrationTextOptions{Style: style},
+	)
+}
+
+func MigrationTextWithContextOptions(
+	writer io.Writer,
+	context MigrationContext,
+	changes []kernel.Change,
+	options MigrationTextOptions,
+) error {
+	style := options.Style
 	if _, err := fmt.Fprintf(
 		writer,
 		"%s %s\n%s %s\n%s %s\n%s %s\n",
@@ -49,7 +68,7 @@ func MigrationTextWithContext(
 	); err != nil {
 		return err
 	}
-	return MigrationTextStyled(writer, changes, style)
+	return MigrationTextWithOptions(writer, changes, options)
 }
 
 func MigrationTextStyled(
@@ -57,25 +76,177 @@ func MigrationTextStyled(
 	changes []kernel.Change,
 	style terminal.Style,
 ) error {
+	return MigrationTextWithOptions(
+		writer, changes, MigrationTextOptions{Style: style, Verbose: true},
+	)
+}
+
+func MigrationTextWithOptions(
+	writer io.Writer,
+	changes []kernel.Change,
+	options MigrationTextOptions,
+) error {
+	style := options.Style
+	summary := kernel.SummarizeMigration(changes)
+	inactiveLabel := "inactive churn hidden:"
+	if options.Verbose {
+		inactiveLabel = "inactive churn:"
+	}
 	if _, err := fmt.Fprintf(
-		writer, "%s %s\n",
-		style.BoldCyan("Kernel migration changes:"), style.Cyan(fmt.Sprint(len(changes))),
+		writer,
+		"%s %s\n  %s %s\n  %s %s\n  %s %s\n  %s %s\n  %s %s\n  %s %s\n  %s %s\n",
+		style.BoldCyan("Kernel migration differences:"), style.Cyan(fmt.Sprint(summary.Total)),
+		style.BoldRed("lost capabilities:"), style.Red(fmt.Sprint(summary.LostCapabilities)),
+		style.BoldYellow("built-in to module:"), style.Yellow(fmt.Sprint(summary.BuiltinToModule)),
+		style.BoldGreen("module to built-in:"), style.Green(fmt.Sprint(summary.ModuleToBuiltin)),
+		style.BoldGreen("newly enabled:"), style.Green(fmt.Sprint(summary.NewlyEnabled)),
+		style.Bold("other value changes:"), style.Cyan(fmt.Sprint(summary.ValueChanged)),
+		style.Bold("Kconfig definition changes:"), style.Cyan(fmt.Sprint(summary.DefinitionChanged)),
+		style.Bold(inactiveLabel), style.Cyan(fmt.Sprint(summary.InactiveChurnHidden)),
 	); err != nil {
 		return err
 	}
-	for _, change := range changes {
-		if _, err := fmt.Fprintf(
-			writer, "%s: %v\n  %s\n",
-			style.Cyan(change.Symbol.String()), change.Kinds, change.Explanation.Summary,
-		); err != nil {
+	for _, impact := range migrationImpactOrder(options.Verbose) {
+		count := migrationImpactCount(summary, impact)
+		if count == 0 {
+			continue
+		}
+		if _, err := fmt.Fprintf(writer, "\n%s\n", style.Bold(migrationImpactHeading(impact))); err != nil {
 			return err
 		}
+		written := 0
+		limit := defaultMigrationGroupLimit
+		if options.Verbose {
+			limit = count
+		}
+		for _, change := range changes {
+			if kernel.ClassifyMigrationChange(change) != impact {
+				continue
+			}
+			if written >= limit {
+				continue
+			}
+			if _, err := fmt.Fprintf(
+				writer, "  %s: %s -> %s\n    %s\n",
+				migrationSymbolStyle(style, impact, change.Symbol.String()),
+				migrationState(change.Before), migrationState(change.After),
+				migrationImpactExplanation(impact, change),
+			); err != nil {
+				return err
+			}
+			written++
+		}
+		if written < count {
+			if _, err := fmt.Fprintf(
+				writer, "  ... %d more in this category; use --verbose to show all\n",
+				count-written,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	if !options.Verbose && summary.InactiveChurnHidden != 0 {
+		_, err := fmt.Fprintln(writer, "\nUse --verbose to include inactive symbol churn.")
+		return err
 	}
 	return nil
 }
 
+func migrationImpactOrder(verbose bool) []kernel.MigrationImpact {
+	result := []kernel.MigrationImpact{
+		kernel.ImpactLostCapability, kernel.ImpactBuiltinToModule,
+		kernel.ImpactModuleToBuiltin, kernel.ImpactNewlyEnabled,
+		kernel.ImpactValueChanged, kernel.ImpactDefinitionChange,
+	}
+	if verbose {
+		result = append(result, kernel.ImpactInactiveChurn)
+	}
+	return result
+}
+
+func migrationImpactCount(summary kernel.MigrationSummary, impact kernel.MigrationImpact) int {
+	switch impact {
+	case kernel.ImpactLostCapability:
+		return summary.LostCapabilities
+	case kernel.ImpactNewlyEnabled:
+		return summary.NewlyEnabled
+	case kernel.ImpactBuiltinToModule:
+		return summary.BuiltinToModule
+	case kernel.ImpactModuleToBuiltin:
+		return summary.ModuleToBuiltin
+	case kernel.ImpactValueChanged:
+		return summary.ValueChanged
+	case kernel.ImpactDefinitionChange:
+		return summary.DefinitionChanged
+	default:
+		return summary.InactiveChurnHidden
+	}
+}
+
+func migrationImpactHeading(impact kernel.MigrationImpact) string {
+	switch impact {
+	case kernel.ImpactLostCapability:
+		return "Capabilities disabled or removed"
+	case kernel.ImpactNewlyEnabled:
+		return "New target defaults enabled"
+	case kernel.ImpactBuiltinToModule:
+		return "Built-in capabilities changed to modules"
+	case kernel.ImpactModuleToBuiltin:
+		return "Modules changed to built-in"
+	case kernel.ImpactValueChanged:
+		return "Other changed values"
+	case kernel.ImpactDefinitionChange:
+		return "Kconfig definitions changed"
+	default:
+		return "Inactive symbol churn"
+	}
+}
+
+func migrationState(state *kernel.State) string {
+	if state == nil {
+		return "absent"
+	}
+	return state.ConfigValue()
+}
+
+func migrationImpactExplanation(impact kernel.MigrationImpact, change kernel.Change) string {
+	switch impact {
+	case kernel.ImpactLostCapability:
+		if change.After == nil {
+			return "enabled in the running kernel; this symbol is absent from the target result"
+		}
+		return "enabled in the running kernel but unavailable or disabled in the target result"
+	case kernel.ImpactNewlyEnabled:
+		if change.Before == nil {
+			return "new target symbol enabled by target Kconfig"
+		}
+		return "disabled or absent in the running kernel and enabled by the target"
+	case kernel.ImpactBuiltinToModule:
+		return "target Kconfig weakened built-in support to a loadable module"
+	case kernel.ImpactModuleToBuiltin:
+		return "target Kconfig promoted a module to built-in support"
+	case kernel.ImpactValueChanged:
+		return "target Kconfig changed a non-tristate value"
+	case kernel.ImpactDefinitionChange:
+		return "the symbol's Kconfig definition changed"
+	default:
+		return "disabled symbol was added or removed without enabling a capability"
+	}
+}
+
+func migrationSymbolStyle(style terminal.Style, impact kernel.MigrationImpact, symbol string) string {
+	switch impact {
+	case kernel.ImpactLostCapability, kernel.ImpactBuiltinToModule:
+		return style.Red(symbol)
+	case kernel.ImpactNewlyEnabled, kernel.ImpactModuleToBuiltin:
+		return style.Green(symbol)
+	default:
+		return style.Cyan(symbol)
+	}
+}
+
 func MigrationJSON(writer io.Writer, changes []kernel.Change) error {
-	return migrationJSON(writer, "maize.migration/v1", nil, changes)
+	return migrationJSON(writer, "maize.migration/v1", nil, changes, false)
 }
 
 func MigrationJSONWithContext(
@@ -83,7 +254,15 @@ func MigrationJSONWithContext(
 	context MigrationContext,
 	changes []kernel.Change,
 ) error {
-	return migrationJSON(writer, "maize.migration/v2", &context, changes)
+	return migrationJSON(writer, "maize.migration/v2", &context, changes, false)
+}
+
+func MigrationJSONPrioritized(
+	writer io.Writer,
+	context MigrationContext,
+	changes []kernel.Change,
+) error {
+	return migrationJSON(writer, "maize.migration/v3", &context, changes, true)
 }
 
 func migrationJSON(
@@ -91,6 +270,7 @@ func migrationJSON(
 	schema string,
 	context *MigrationContext,
 	changes []kernel.Change,
+	prioritized bool,
 ) error {
 	type changeJSON struct {
 		Symbol  string   `json:"symbol"`
@@ -98,19 +278,44 @@ func migrationJSON(
 		Before  *string  `json:"before"`
 		After   *string  `json:"after"`
 		Summary string   `json:"summary"`
+		Impact  string   `json:"impact,omitempty"`
+	}
+	type summaryJSON struct {
+		Total               int `json:"total"`
+		LostCapabilities    int `json:"lost_capabilities"`
+		NewlyEnabled        int `json:"newly_enabled"`
+		BuiltinToModule     int `json:"builtin_to_module"`
+		ModuleToBuiltin     int `json:"module_to_builtin"`
+		ValueChanged        int `json:"value_changed"`
+		DefinitionChanged   int `json:"definition_changed"`
+		InactiveChurnHidden int `json:"inactive_churn"`
 	}
 	document := struct {
 		Schema  string            `json:"schema"`
 		Context *MigrationContext `json:"context,omitempty"`
+		Summary *summaryJSON      `json:"summary,omitempty"`
 		Changes []changeJSON      `json:"changes"`
 	}{
 		Schema:  schema,
 		Context: context,
 		Changes: make([]changeJSON, 0, len(changes)),
 	}
+	if prioritized {
+		summary := kernel.SummarizeMigration(changes)
+		document.Summary = &summaryJSON{
+			Total: summary.Total, LostCapabilities: summary.LostCapabilities,
+			NewlyEnabled: summary.NewlyEnabled, BuiltinToModule: summary.BuiltinToModule,
+			ModuleToBuiltin: summary.ModuleToBuiltin, ValueChanged: summary.ValueChanged,
+			DefinitionChanged:   summary.DefinitionChanged,
+			InactiveChurnHidden: summary.InactiveChurnHidden,
+		}
+	}
 	for _, change := range changes {
 		item := changeJSON{
 			Symbol: change.Symbol.String(), Summary: change.Explanation.Summary,
+		}
+		if prioritized {
+			item.Impact = string(kernel.ClassifyMigrationChange(change))
 		}
 		for _, kind := range change.Kinds {
 			item.Kinds = append(item.Kinds, string(kind))

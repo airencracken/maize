@@ -53,6 +53,10 @@ configuration, discovers versioned source trees below @file{/usr/src}, selects
 the newest kernel release, and resolves the running configuration through that
 target tree. The report names both releases and paths. Supplying all four
 old/new Kconfig and configuration options retains explicit artifact comparison.
+The text report groups lost and newly enabled capabilities, built-in/module
+transitions, other value changes, and inactive symbol churn. Large groups are
+capped unless @option{--verbose} is supplied. Contextual JSON uses the
+@code{maize.migration/v3} contract and includes every classified change.
 
 @section check
 

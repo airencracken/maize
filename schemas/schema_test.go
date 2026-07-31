@@ -26,6 +26,7 @@ func TestInspectSchemaIsValidAndRequiresPublicContractFields(t *testing.T) {
 		{"maize.hardware.v1.schema.json", []string{"schema", "hardware"}},
 		{"maize.migration.v1.schema.json", []string{"schema", "changes"}},
 		{"maize.migration.v2.schema.json", []string{"schema", "context", "changes"}},
+		{"maize.migration.v3.schema.json", []string{"schema", "context", "summary", "changes"}},
 	} {
 		test := test
 		t.Run(test.path, func(t *testing.T) {

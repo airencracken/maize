@@ -73,3 +73,56 @@ func TestContextualMigrationReportsIdentifyComparedKernels(t *testing.T) {
 		t.Fatalf("migration JSON:\n%s", document.String())
 	}
 }
+
+func TestPrioritizedMigrationReportCapsDefaultGroupsAndPreservesVerboseAudit(t *testing.T) {
+	t.Parallel()
+
+	symbol, _ := kernel.ParseSymbol("REMOVED")
+	yes := kernel.Yes()
+	changes := make([]kernel.Change, 13)
+	for index := range changes {
+		changes[index] = kernel.Change{Symbol: symbol, Before: &yes}
+	}
+	var concise bytes.Buffer
+	if err := report.MigrationTextWithOptions(
+		&concise, changes, report.MigrationTextOptions{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(concise.String(), "CONFIG_REMOVED:") != 12 ||
+		!strings.Contains(concise.String(), "1 more in this category") {
+		t.Fatalf("concise report:\n%s", concise.String())
+	}
+	var verbose bytes.Buffer
+	if err := report.MigrationTextWithOptions(
+		&verbose, changes, report.MigrationTextOptions{Verbose: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(verbose.String(), "CONFIG_REMOVED:") != 13 ||
+		strings.Contains(verbose.String(), "more in this category") {
+		t.Fatalf("verbose report:\n%s", verbose.String())
+	}
+}
+
+func TestPrioritizedMigrationJSONIncludesSummaryAndImpact(t *testing.T) {
+	t.Parallel()
+
+	symbol, _ := kernel.ParseSymbol("REMOVED")
+	yes := kernel.Yes()
+	context := report.MigrationContext{
+		RunningRelease: "6.9", RunningConfig: "/proc/config.gz",
+		TargetRelease: "6.10", TargetTree: "/usr/src/linux-6.10",
+	}
+	var output bytes.Buffer
+	if err := report.MigrationJSONPrioritized(
+		&output, context, []kernel.Change{{Symbol: symbol, Before: &yes}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"schema": "maize.migration/v3"`) ||
+		!strings.Contains(output.String(), `"lost_capabilities": 1`) ||
+		!strings.Contains(output.String(), `"impact": "lost-capability"`) {
+		t.Fatalf("prioritized JSON:\n%s", output.String())
+	}
+}

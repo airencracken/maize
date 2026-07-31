@@ -38,6 +38,10 @@ migrating it through the newest installed source tree below
 .IR /usr/src .
 The report identifies both releases and the selected source. Supplying all four
 old/new Kconfig and configuration options retains explicit artifact comparison.
+The default text report groups consequences and caps large groups. Use
+.B --verbose
+to include every change, including inactive symbol churn. JSON includes the
+complete classified change set.
 .TP
 .B check
 Check known required kernel capabilities. Exit status 3 indicates known
@@ -71,7 +75,8 @@ Inspect an alternate Gentoo installation root.
 Use Portage locks or a lockless stabilized snapshot.
 .TP
 .B --verbose
-Show detailed unresolved package-policy evidence.
+Show detailed unresolved package-policy evidence or the complete migration
+change stream.
 .SH EXIT STATUS
 .TP
 .B 0

@@ -28,6 +28,94 @@ type Change struct {
 	Explanation domain.Explanation
 }
 
+type MigrationImpact string
+
+const (
+	ImpactLostCapability   MigrationImpact = "lost-capability"
+	ImpactNewlyEnabled     MigrationImpact = "newly-enabled"
+	ImpactBuiltinToModule  MigrationImpact = "builtin-to-module"
+	ImpactModuleToBuiltin  MigrationImpact = "module-to-builtin"
+	ImpactValueChanged     MigrationImpact = "value-changed"
+	ImpactDefinitionChange MigrationImpact = "definition-changed"
+	ImpactInactiveChurn    MigrationImpact = "inactive-churn"
+)
+
+type MigrationSummary struct {
+	Total               int
+	LostCapabilities    int
+	NewlyEnabled        int
+	BuiltinToModule     int
+	ModuleToBuiltin     int
+	ValueChanged        int
+	DefinitionChanged   int
+	InactiveChurnHidden int
+}
+
+func SummarizeMigration(changes []Change) MigrationSummary {
+	result := MigrationSummary{Total: len(changes)}
+	for _, change := range changes {
+		switch ClassifyMigrationChange(change) {
+		case ImpactLostCapability:
+			result.LostCapabilities++
+		case ImpactNewlyEnabled:
+			result.NewlyEnabled++
+		case ImpactBuiltinToModule:
+			result.BuiltinToModule++
+		case ImpactModuleToBuiltin:
+			result.ModuleToBuiltin++
+		case ImpactValueChanged:
+			result.ValueChanged++
+		case ImpactDefinitionChange:
+			result.DefinitionChanged++
+		case ImpactInactiveChurn:
+			result.InactiveChurnHidden++
+		}
+	}
+	return result
+}
+
+func ClassifyMigrationChange(change Change) MigrationImpact {
+	before, beforeEnabled := tristateValue(change.Before)
+	after, afterEnabled := tristateValue(change.After)
+	switch {
+	case beforeEnabled && !afterEnabled:
+		return ImpactLostCapability
+	case !beforeEnabled && afterEnabled:
+		return ImpactNewlyEnabled
+	case before == StateYes && after == StateModule:
+		return ImpactBuiltinToModule
+	case before == StateModule && after == StateYes:
+		return ImpactModuleToBuiltin
+	case nonTristateMaterial(change.Before) || nonTristateMaterial(change.After):
+		return ImpactValueChanged
+	case hasDefinitionChange(change.Kinds):
+		return ImpactDefinitionChange
+	default:
+		return ImpactInactiveChurn
+	}
+}
+
+func nonTristateMaterial(state *State) bool {
+	return state != nil && state.Kind != StateNo && state.Kind != StateYes &&
+		state.Kind != StateModule
+}
+
+func tristateValue(state *State) (StateKind, bool) {
+	if state == nil {
+		return StateNo, false
+	}
+	return state.Kind, state.Kind == StateYes || state.Kind == StateModule
+}
+
+func hasDefinitionChange(kinds []ChangeKind) bool {
+	for _, kind := range kinds {
+		if kind != ChangeValue {
+			return true
+		}
+	}
+	return false
+}
+
 func Compare(oldCatalog, newCatalog Catalog, oldConfig, newConfig Config) []Change {
 	symbols := make(map[Symbol]bool)
 	for symbol := range oldCatalog.definitions {

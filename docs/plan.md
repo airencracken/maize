@@ -175,6 +175,8 @@ maize observe
 - Default to the running configuration and newest installed versioned source
   tree while retaining explicit artifact overrides.
 - Classify added, removed, renamed, replaced, and behavior-changing symbols.
+- Group resolved value changes by operator impact and hide inactive churn from
+  the concise report while preserving it in verbose and JSON output.
 - Explain target-induced value changes.
 - Emit deterministic text and JSON reports.
 

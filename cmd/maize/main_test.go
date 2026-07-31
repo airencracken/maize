@@ -297,7 +297,8 @@ func TestMigrateDefaultsFromRunningKernelToLatestInstalledSource(t *testing.T) {
 		"migrate", "--root", root, "--format", "json", "--color", "never",
 	}, &stdout, &stderr)
 	if code != 0 || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), `"schema": "maize.migration/v2"`) ||
+		!strings.Contains(stdout.String(), `"schema": "maize.migration/v3"`) ||
+		!strings.Contains(stdout.String(), `"inactive_churn"`) ||
 		!strings.Contains(stdout.String(), `"running_release": "6.9.12-gentoo"`) ||
 		!strings.Contains(stdout.String(), `"target_release": "6.10.2-gentoo"`) ||
 		!strings.Contains(stdout.String(), `"target_tree": "`+target+`"`) ||

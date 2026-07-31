@@ -69,7 +69,7 @@ _maize()
 			COMPREPLY=( $(compgen -W "$common" -- "$cur") )
 			;;
 		migrate)
-			COMPREPLY=( $(compgen -W "--color --format --help --new-config --new-kconfig --old-config --old-kconfig --procfs --root" -- "$cur") )
+			COMPREPLY=( $(compgen -W "--color --format --help --new-config --new-kconfig --old-config --old-kconfig --procfs --root --verbose" -- "$cur") )
 			;;
 		observe)
 			COMPREPLY=( $(compgen -W "--color --help --output --root --sysfs" -- "$cur") )
