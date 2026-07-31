@@ -59,10 +59,13 @@ maize inspect --root /mnt/gentoo --sysfs /mnt/gentoo/sys --procfs /mnt/gentoo/pr
 ## Development
 
 ```text
-go test ./...
-go test -race ./...
-go vet ./...
+make
 ```
+
+The default target runs formatting and module consistency checks, `go vet`,
+the normal and race-enabled test suites, and then builds `bin/maize`. Run
+`make help` for focused targets such as `make test`, `make build`, and
+`make install`.
 
 ## License
 
