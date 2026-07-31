@@ -187,13 +187,16 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	output, remaining, err := takeOption(args, "--output")
-	if err != nil || output == "" {
-		fmt.Fprintln(stderr, "maize generate requires exactly one --output PATH")
+	if err != nil {
+		fmt.Fprintln(stderr, "maize generate accepts --output PATH at most once")
 		return 2
 	}
+	if output == "" {
+		output = "maize.config"
+	}
 	kernelTree, remaining, err := takeOption(remaining, "--kernel-tree")
-	if err != nil || kernelTree == "" {
-		fmt.Fprintln(stderr, "maize generate requires exactly one --kernel-tree PATH")
+	if err != nil {
+		fmt.Fprintln(stderr, "maize generate accepts --kernel-tree PATH at most once")
 		return 2
 	}
 	experimental, remaining, err := takeSwitch(remaining, "--experimental-best-guess")
@@ -210,19 +213,25 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--experimental-best-guess and --experimental-minimize are mutually exclusive")
 		return 2
 	}
-	inspection, _, style, _, code := loadInspection("generate", remaining, stdout, stderr)
+	inspection, _, style, verbose, code := loadInspection("generate", remaining, stdout, stderr)
 	if code == -1 {
 		return 0
 	}
 	if code != 0 {
 		return code
 	}
+	if kernelTree == "" {
+		root := inspectionRoot(remaining)
+		inventory, discoverErr := kernel.DiscoverSourceTrees(root, "")
+		if discoverErr != nil {
+			fmt.Fprintf(stderr, "generate target discovery: %v\n", discoverErr)
+			return 1
+		}
+		kernelTree = inventory.Target.Path
+		fmt.Fprintf(stdout, "selected newest installed kernel source %s (%s)\n", style.Cyan(kernelTree), inventory.Target.Release)
+	}
 	if len(inspection.DynamicKernelPolicy) != 0 {
-		fmt.Fprintf(
-			stderr,
-			"generate: %d dynamic package kernel policies require operator review\n",
-			len(inspection.DynamicKernelPolicy),
-		)
+		writeDynamicPolicyFailure(stderr, inspection.DynamicKernelPolicy, verbose)
 		return 1
 	}
 	candidate, err := app.CandidateConfig(inspection)
@@ -265,6 +274,11 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	}
 	if err := app.ValidateRequiredRecommendations(validation, inspection.Recommendations); err != nil {
 		fmt.Fprintf(stderr, "generate validation: %v\n", err)
+		return 1
+	}
+	output, err = generationOutputPath(output)
+	if err != nil {
+		fmt.Fprintf(stderr, "generate output: %v\n", err)
 		return 1
 	}
 	if err := fileutil.WriteAtomic(output, 0o644, validation.Config.Write); err != nil {
@@ -652,18 +666,99 @@ func writeInspectionHelp(flags *flag.FlagSet, command string, writer io.Writer) 
 	}
 }
 
+func inspectionRoot(args []string) string {
+	root := "/"
+	for index := 0; index < len(args); index++ {
+		if strings.HasPrefix(args[index], "--root=") {
+			root = strings.TrimPrefix(args[index], "--root=")
+		} else if args[index] == "--root" && index+1 < len(args) {
+			root = args[index+1]
+			index++
+		}
+	}
+	return root
+}
+
+func generationOutputPath(output string) (string, error) {
+	info, err := os.Stat(output)
+	if err == nil {
+		if info.IsDir() {
+			return filepath.Join(output, "maize.config"), nil
+		}
+		return output, nil
+	}
+	if os.IsNotExist(err) {
+		return output, nil
+	}
+	return "", fmt.Errorf("inspect %q: %w", output, err)
+}
+
+func writeDynamicPolicyFailure(writer io.Writer, policies []maizegentoo.DynamicKernelPolicy, verbose bool) {
+	type packagePolicies struct {
+		name     string
+		policies []maizegentoo.DynamicKernelPolicy
+	}
+	byPackage := make(map[string][]maizegentoo.DynamicKernelPolicy)
+	for _, policy := range policies {
+		name := policy.Package.CPV()
+		byPackage[name] = append(byPackage[name], policy)
+	}
+	groups := make([]packagePolicies, 0, len(byPackage))
+	for name, findings := range byPackage {
+		groups = append(groups, packagePolicies{name: name, policies: findings})
+	}
+	sort.Slice(groups, func(left, right int) bool { return groups[left].name < groups[right].name })
+	fmt.Fprintf(writer, "generate: %d dynamic package kernel policies across %d packages require operator review:\n", len(policies), len(groups))
+	limit := len(groups)
+	if !verbose && limit > 12 {
+		limit = 12
+	}
+	for _, group := range groups[:limit] {
+		reasons := make(map[string]bool)
+		for _, policy := range group.policies {
+			reasons[policy.Reason] = true
+		}
+		orderedReasons := make([]string, 0, len(reasons))
+		for reason := range reasons {
+			orderedReasons = append(orderedReasons, reason)
+		}
+		sort.Strings(orderedReasons)
+		fmt.Fprintf(writer, "  %s: %d unresolved finding(s): %s\n", group.name, len(group.policies), strings.Join(orderedReasons, "; "))
+		if verbose {
+			for _, policy := range group.policies {
+				fmt.Fprintf(writer, "    %s", policy.Expression)
+				if policy.Provenance.Source != "" {
+					fmt.Fprintf(writer, " (%s", policy.Provenance.Source)
+					if policy.Provenance.Detail != "" {
+						fmt.Fprintf(writer, ": %s", policy.Provenance.Detail)
+					}
+					fmt.Fprint(writer, ")")
+				}
+				fmt.Fprintln(writer)
+			}
+		}
+	}
+	if limit < len(groups) {
+		fmt.Fprintf(writer, "  ... %d more package(s); rerun with --verbose for the complete list\n", len(groups)-limit)
+	}
+	fmt.Fprintln(writer, "Maize will not guess past shell-dependent package policy; these findings need Gentooling support or operator review.")
+}
+
 func writeGenerateHelp(writer io.Writer) {
 	fmt.Fprint(writer, `Usage:
-  maize generate --kernel-tree PATH --output PATH [options]
+  maize generate [--kernel-tree PATH] [--output PATH] [options]
 
 Generate a new configuration from the selected working kernel config, known
 hardware, and effective Gentoo package policy. The target kernel resolves
 dependencies with olddefconfig in an isolated directory. The source tree and
 input configuration are never modified.
 
-Required:
-  --kernel-tree PATH              target kernel source tree
-  --output PATH                   output configuration; written atomically
+Defaults:
+  --kernel-tree PATH              target source; default is the newest valid
+                                 versioned kernel tree below ROOT/usr/src
+  --output PATH                   output file or directory (default
+                                 "./maize.config"); a directory receives a
+                                 file named maize.config
 
 Experimental strategies (mutually exclusive):
   --experimental-best-guess      prune unobserved modules while retaining

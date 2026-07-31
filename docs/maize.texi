@@ -41,7 +41,9 @@ kernel policy. Use @option{--verbose} to show every unresolved finding.
 
 @section generate
 
-@command{maize generate} requires @option{--kernel-tree} and @option{--output}.
+@command{maize generate} selects the newest valid versioned kernel source below
+@file{ROOT/usr/src} and writes @file{./maize.config} by default. An output path
+that names a directory receives a file named @file{maize.config}.
 It applies known recommendations, delegates dependency resolution to the
 target kernel's Kconfig evaluator, verifies required decisions, and writes the
 validated configuration atomically.
@@ -52,6 +54,8 @@ common removable-device, filesystem, network, and audio fallback families.
 configuration supported by present hardware, loaded modules, and known package
 policy. Both modes refuse unresolved dynamic policy and produce proposals for
 review; disconnected hardware cannot be guaranteed safe.
+Unresolved dynamic package policy blocks generation and reports affected
+packages and reasons. @option{--verbose} includes every expression and source.
 
 @section migrate
 

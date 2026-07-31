@@ -26,7 +26,7 @@ including nichoski/kergen.
 maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
-maize generate --kernel-tree /usr/src/linux --output ./candidate.config
+maize generate
 maize generate --kernel-tree /usr/src/linux --output ./best-guess.config --experimental-best-guess
 maize generate --kernel-tree /usr/src/linux --output ./minimal.config --experimental-minimize
 maize migrate
@@ -37,15 +37,16 @@ maize observe --output ./hardware.json
 ```
 
 All declared commands have an executable first implementation. `inspect`,
-`check`, `impact`, and `migrate` are read-only. `generate` and `observe` require
-explicit output paths and write atomically.
+`check`, `impact`, and `migrate` are read-only. `generate` and `observe` write
+atomically; `observe` requires an explicit output path.
 
 Text reports use terminal-aware color inspired by Arise's semantic palette.
 Use `--color auto|always|never`; automatic mode also honors `NO_COLOR`.
 Unresolved package policy is summarized by default and expanded with
 `--verbose`. JSON output is never colorized.
 
-`generate` requires an explicit target kernel source tree. It runs that tree's
+`generate` defaults to the newest versioned kernel source below `/usr/src` and
+writes `./maize.config`; an output directory receives `maize.config`. It runs the selected tree's
 `olddefconfig` in an isolated output directory, verifies that required Maize
 decisions survived Kconfig dependency resolution, and atomically writes only
 the validated result. Hardware-to-Kconfig translation and configuration
@@ -54,7 +55,9 @@ families for removable devices, filesystems, networking, and audio while
 pruning other unobserved module options. `--experimental-minimize` omits that
 safety buffer and attempts the smallest result justified by present hardware,
 loaded modules, and known package policy. Both preserve the existing config,
-write a separate proposal, and refuse unresolved dynamic package policy.
+write a separate proposal, and refuse unresolved dynamic package policy. A
+refusal names affected packages and reasons; `--verbose` includes every
+expression and source location.
 
 With no artifact overrides, `migrate` loads the running kernel configuration,
 discovers versioned source trees below `/usr/src`, selects the newest release

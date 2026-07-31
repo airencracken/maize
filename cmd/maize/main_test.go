@@ -113,13 +113,10 @@ func TestInspectRejectsInvalidArgumentsBeforeReadingHost(t *testing.T) {
 	}
 }
 
-func TestGenerateRequiresOutputAndTargetTreeBeforeReadingHost(t *testing.T) {
+func TestGenerateRejectsDuplicateExplicitPathsBeforeReadingHost(t *testing.T) {
 	t.Parallel()
 
 	for _, args := range [][]string{
-		{"generate"},
-		{"generate", "--output", "candidate.config"},
-		{"generate", "--kernel-tree", "/usr/src/linux"},
 		{"generate", "--output", "one", "--output", "two", "--kernel-tree", "/usr/src/linux"},
 		{"generate", "--output", "candidate.config", "--kernel-tree", "one", "--kernel-tree", "two"},
 	} {
@@ -128,6 +125,43 @@ func TestGenerateRequiresOutputAndTargetTreeBeforeReadingHost(t *testing.T) {
 		if code := run(args, &stdout, &stderr); code != 2 {
 			t.Fatalf("%v exit %d, stdout %q, stderr %q", args, code, stdout.String(), stderr.String())
 		}
+	}
+}
+
+func TestGenerateDiscoversNewestKernelTreeAndAcceptsDirectoryOutput(t *testing.T) {
+	t.Parallel()
+	root := commandFixture(t)
+	config := filepath.Join(root, "kernel.config")
+	commandWrite(t, config, "CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\nCONFIG_SECCOMP_FILTER=y\n")
+	commandKernelSourceFixture(t, root, "6.12.1-gentoo", "olddefconfig:\n\t@test -f \"$(KCONFIG_CONFIG)\"\n")
+	newest := commandKernelSourceFixture(t, root, "7.1.5-gentoo", "olddefconfig:\n\t@test -f \"$(KCONFIG_CONFIG)\"\n")
+	outputDirectory := filepath.Join(root, "output")
+	if err := os.Mkdir(outputDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"generate", "--root", root, "--config", config, "--output", outputDirectory}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), newest) || !strings.Contains(stdout.String(), "7.1.5-gentoo") {
+		t.Fatalf("source selection not reported: %s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(outputDirectory, "maize.config")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenerationOutputDefaultsAndDirectoryResolution(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	got, err := generationOutputPath(directory)
+	if err != nil || got != filepath.Join(directory, "maize.config") {
+		t.Fatalf("directory output = %q, %v", got, err)
+	}
+	got, err = generationOutputPath("maize.config")
+	if err != nil || got != "maize.config" {
+		t.Fatalf("default output = %q, %v", got, err)
 	}
 }
 
@@ -306,11 +340,23 @@ func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testin
 		"--kernel-tree", kernelTree,
 	}, &stdout, &stderr)
 	if code != 1 ||
-		!strings.Contains(stderr.String(), "dynamic package kernel policies require operator review") {
+		!strings.Contains(stderr.String(), "dynamic package kernel policies across") ||
+		!strings.Contains(stderr.String(), "app-containers/docker-28.3.2") ||
+		!strings.Contains(stderr.String(), "shell") {
 		t.Fatalf("generate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {
 		t.Fatalf("output must not be created, stat error = %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{
+		"generate", "--root", root, "--config", config, "--output", output,
+		"--repository", "gentoo=" + repository, "--kernel-tree", kernelTree, "--verbose",
+	}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "${RUNTIME_SYMBOL}") ||
+		!strings.Contains(stderr.String(), "docker-28.3.2.ebuild") {
+		t.Fatalf("verbose generate exit %d, stderr %q", code, stderr.String())
 	}
 }
 
