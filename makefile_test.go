@@ -22,7 +22,10 @@ func TestMakefileExposesDocumentedDevelopmentContract(t *testing.T) {
 			t.Errorf("Makefile does not declare %q", strings.TrimSuffix(target, ":"))
 		}
 	}
-	if !strings.Contains(makefile, "check: fmt-check mod-check vet test test-race") {
+	if !strings.Contains(
+		makefile,
+		"check: fmt-check mod-check completion-check docs-check vet test test-race",
+	) {
 		t.Error("check target does not run the complete validation contract")
 	}
 	if !strings.Contains(makefile, `-buildvcs=false -o "$(BIN_DIR)/maize" ./cmd/maize`) {

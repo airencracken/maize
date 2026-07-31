@@ -1,0 +1,123 @@
+\input texinfo
+@setfilename maize.info
+@settitle Maize Manual
+@documentencoding UTF-8
+@dircategory System administration
+@direntry
+* Maize: (maize).  Gentoo Linux kernel configuration analysis and generation.
+@end direntry
+
+@titlepage
+@title Maize Manual
+@subtitle Gentoo Linux kernel configuration analysis and generation
+@end titlepage
+
+@contents
+
+@node Top
+@top Maize
+
+Maize analyzes, migrates, checks, and generates Linux kernel configurations
+for Gentoo systems. It combines kernel configuration state, current hardware,
+and Gentoo package policy while retaining explanations and provenance.
+
+@menu
+* Commands::
+* Output::
+* Kernel validation::
+* Exit status::
+* Bash completion::
+* Safety::
+@end menu
+
+@node Commands
+@chapter Commands
+
+@section inspect
+
+@command{maize inspect} reports the selected kernel configuration, hardware
+inventory, Gentoo snapshot, known recommendations, and unresolved package
+kernel policy. Use @option{--verbose} to show every unresolved finding.
+
+@section generate
+
+@command{maize generate} requires @option{--kernel-tree} and @option{--output}.
+It applies known recommendations, delegates dependency resolution to the
+target kernel's Kconfig evaluator, verifies required decisions, and writes the
+validated configuration atomically.
+
+@section migrate
+
+@command{maize migrate} compares old and new Kconfig and configuration
+artifacts. It reports meaningful symbol and value changes.
+
+@section check
+
+@command{maize check} checks known required capabilities. A result is
+indeterminate when unresolved package kernel policy remains, even if there are
+no known missing recommendations.
+
+@section impact
+
+@command{maize impact --config @var{path}} currently reports known
+requirements that the proposed configuration does not satisfy.
+Consumer-oriented package and hardware consequence reporting remains under
+development.
+
+@section observe
+
+@command{maize observe --output @var{path}} writes a versioned JSON hardware
+inventory.
+
+@node Output
+@chapter Output
+
+Text output is colored only when appropriate for the destination terminal.
+@option{--color auto} is the default. @option{--color always} forces ANSI
+color and @option{--color never} disables it. The @env{NO_COLOR} environment
+variable disables automatic color. JSON never contains ANSI escape sequences.
+
+Concise output groups unresolved package policy by category and package count.
+Use @option{--verbose} when the individual ebuild and eclass findings are
+needed.
+
+@node Kernel validation
+@chapter Kernel validation
+
+Maize uses the selected target kernel's own Kconfig implementation as the
+authority. Validation occurs against a temporary configuration outside the
+source tree. Required decisions that Kconfig removes or weakens cause
+generation to fail before the output path is created or replaced.
+
+@node Exit status
+@chapter Exit status
+
+@table @code
+@item 0
+Success. For @command{check}, known requirements are satisfied.
+@item 1
+Execution or validation failed.
+@item 2
+Invalid command-line usage.
+@item 3
+@command{check} found known required changes.
+@item 4
+@command{check} is indeterminate because package policy remains unresolved.
+@end table
+
+@node Bash completion
+@chapter Bash completion
+
+Source @file{completions/maize.bash} from an interactive Bash startup file, or
+install it in the system Bash completion directory. It completes commands,
+options, enum values, files, and directories.
+
+@node Safety
+@chapter Safety
+
+Inspection and analysis are read-only. Output-producing commands require an
+explicit destination and use atomic replacement. Kernel validation does not
+modify the selected source tree. Maize never shells out to package-querying
+tools; Gentoo package state is consumed through Gentooling Go APIs.
+
+@bye

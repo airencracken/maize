@@ -3,6 +3,7 @@ package recommend
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/airencracken/maize/internal/domain"
 	maizegentoo "github.com/airencracken/maize/internal/gentooling"
@@ -39,11 +40,13 @@ func PackageKernelPolicy(
 		item := Recommendation{
 			Capability: "package.kernel-policy", Disposition: disposition,
 			Symbol: symbol, Desired: desired,
-			Detail: "structured " + requirement.Origin + " kernel requirement",
+			Detail: packageKernelExplanation(requirement, symbol),
 			Evidence: []domain.Evidence{{
-				Kind: domain.SourcePackage, Source: requirement.Provenance.Source,
-				Detail: requirement.Provenance.Detail, Confidence: domain.Certain,
+				Kind: domain.SourcePackage, Source: requirement.Package.CPV(),
+				Detail:     packageKernelExplanation(requirement, symbol),
+				Confidence: domain.Certain,
 			}},
+			Provenance: []domain.Provenance{requirement.Provenance},
 		}
 		if entry, found := config.Get(symbol); found {
 			current := entry.State
@@ -59,4 +62,41 @@ func PackageKernelPolicy(
 		return result[left].Desired.ConfigValue() < result[right].Desired.ConfigValue()
 	})
 	return result, nil
+}
+
+func packageKernelExplanation(
+	requirement maizegentoo.PackageKernelRequirement,
+	symbol kernel.Symbol,
+) string {
+	action := "requires"
+	if requirement.Severity == maizegentoo.KernelWarning {
+		action = "recommends"
+	}
+	state := "enabled"
+	if requirement.Expectation == maizegentoo.KernelDisabled {
+		state = "disabled"
+	}
+	pkg := requirement.Package.CPV()
+	if pkg == "" {
+		pkg = "installed package"
+	}
+	explanation := fmt.Sprintf(
+		"%s explicitly %s %s to be %s",
+		pkg, action, symbol.String(), state,
+	)
+	if len(requirement.Conditions) != 0 {
+		var conditions []string
+		for _, condition := range requirement.Conditions {
+			value := "enabled"
+			if !condition.Enabled {
+				value = "disabled"
+			}
+			conditions = append(conditions, fmt.Sprintf("USE=%s is %s", condition.Flag, value))
+		}
+		explanation += " when " + strings.Join(conditions, " and ")
+	}
+	if requirement.Function != "" {
+		explanation += " during " + requirement.Function
+	}
+	return explanation
 }

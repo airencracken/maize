@@ -37,6 +37,11 @@ All declared commands have an executable first implementation. `inspect`,
 `check`, `impact`, and `migrate` are read-only. `generate` and `observe` require
 explicit output paths and write atomically.
 
+Text reports use terminal-aware color inspired by Arise's semantic palette.
+Use `--color auto|always|never`; automatic mode also honors `NO_COLOR`.
+Unresolved package policy is summarized by default and expanded with
+`--verbose`. JSON output is never colorized.
+
 `generate` requires an explicit target kernel source tree. It runs that tree's
 `olddefconfig` in an isolated output directory, verifies that required Maize
 decisions survived Kconfig dependency resolution, and atomically writes only
@@ -67,7 +72,9 @@ make
 The default target runs formatting and module consistency checks, `go vet`,
 the normal and race-enabled test suites, and then builds `bin/maize`. Run
 `make help` for focused targets such as `make test`, `make build`, and
-`make install`.
+`make install`. `make docs` builds the Info manual, while `make install-docs`
+installs Bash completion, the `maize(1)` man page, and the Info manual beneath
+`PREFIX` (default `/usr/local`).
 
 ## License
 

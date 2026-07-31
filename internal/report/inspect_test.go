@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	shared "github.com/airencracken/gentooling"
 	"github.com/airencracken/maize/internal/app"
 	"github.com/airencracken/maize/internal/domain"
 	maizegentoo "github.com/airencracken/maize/internal/gentooling"
@@ -15,6 +16,7 @@ import (
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/recommend"
 	"github.com/airencracken/maize/internal/report"
+	"github.com/airencracken/maize/internal/terminal"
 )
 
 func TestInspectionJSONEmitsVersionedDeterministicContract(t *testing.T) {
@@ -104,11 +106,70 @@ func TestInspectionTextExplainsMaterialDecision(t *testing.T) {
 	for _, expected := range []string{
 		"Installed packages: 1",
 		"CONFIG_SECCOMP_FILTER: n -> y (enable, required)",
-		"because app-containers/docker-28.3.2[seccomp]",
+		"because Docker was built with seccomp support [app-containers/docker-28.3.2[seccomp]]",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("report missing %q:\n%s", expected, output.String())
 		}
+	}
+}
+
+func TestInspectionTextSummarizesDynamicPolicyUnlessVerbose(t *testing.T) {
+	t.Parallel()
+
+	inspection := reportFixture()
+	inspection.DynamicKernelPolicy = []maizegentoo.DynamicKernelPolicy{
+		{
+			Package:    shared.PackageID{Category: "app-misc", Name: "one", Version: "1"},
+			Expression: "inherit linux-info",
+		},
+		{
+			Package:    shared.PackageID{Category: "app-misc", Name: "one", Version: "1"},
+			Expression: `CONFIG_CHECK="${RUNTIME}"`,
+		},
+		{
+			Package:    shared.PackageID{Category: "app-misc", Name: "two", Version: "2"},
+			Expression: "inherit linux-info",
+		},
+	}
+	var concise bytes.Buffer
+	if err := report.InspectionText(&concise, inspection); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(concise.String(), "3 unresolved findings across 2 packages") ||
+		!strings.Contains(concise.String(), "2 runtime dispatch markers; 1 unevaluated expressions") ||
+		strings.Contains(concise.String(), "${RUNTIME}") {
+		t.Fatalf("concise report:\n%s", concise.String())
+	}
+
+	var verbose bytes.Buffer
+	if err := report.InspectionTextWithOptions(
+		&verbose, inspection, report.TextOptions{Verbose: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(verbose.String(), "${RUNTIME}") {
+		t.Fatalf("verbose report:\n%s", verbose.String())
+	}
+}
+
+func TestInspectionTextForcedColorDoesNotAffectJSON(t *testing.T) {
+	t.Parallel()
+
+	style := terminal.StyleForWriter(terminal.ColorAlways, &bytes.Buffer{})
+	var text bytes.Buffer
+	if err := report.InspectionTextStyled(&text, reportFixture(), style); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "\x1b[") {
+		t.Fatalf("forced-color report has no ANSI styling:\n%q", text.String())
+	}
+	var document bytes.Buffer
+	if err := report.InspectionJSON(&document, reportFixture()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(document.String(), "\x1b[") {
+		t.Fatalf("JSON contains ANSI styling:\n%q", document.String())
 	}
 }
 

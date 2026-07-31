@@ -35,6 +35,7 @@ type Recommendation struct {
 	Action      Action
 	Detail      string
 	Evidence    []domain.Evidence
+	Provenance  []domain.Provenance
 }
 
 // Kernel converts resolved capability decisions into deterministic symbol

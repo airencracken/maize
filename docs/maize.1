@@ -1,0 +1,114 @@
+.TH MAIZE 1 "2026-07-30" "Maize" "User Commands"
+.SH NAME
+maize \- generate and migrate optimized Gentoo kernel configurations
+.SH SYNOPSIS
+.B maize
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B maize
+combines Linux kernel configuration, hardware evidence, and Gentoo package
+policy to explain, check, migrate, and generate kernel configurations.
+It is intended only for Gentoo systems.
+.PP
+Text output uses color automatically on terminals. Set
+.B NO_COLOR
+or use
+.B --color never
+to disable it. JSON output never contains terminal escape sequences.
+.SH COMMANDS
+.TP
+.B inspect
+Inspect the selected kernel configuration, current hardware, installed package
+state, and package kernel policy. Use
+.B --verbose
+to print every unresolved policy finding.
+.TP
+.B generate
+Create a target-validated kernel configuration. Requires
+.B --kernel-tree
+and
+.BR --output .
+The target kernel's Kconfig evaluator runs against a temporary configuration;
+the source tree is not modified.
+.TP
+.B migrate
+Compare old and new Kconfig and configuration artifacts and explain semantic
+changes.
+.TP
+.B check
+Check known required kernel capabilities. Exit status 3 indicates known
+required changes; status 4 indicates that unresolved package policy makes the
+result indeterminate.
+.TP
+.B impact
+Report known requirements that a proposed
+.B --config
+does not satisfy. Consumer-oriented impact analysis is still under development.
+.TP
+.B observe
+Write the current hardware inventory as versioned JSON. Requires
+.BR --output .
+.SH COMMON OPTIONS
+.TP
+.BR --color " " auto|always|never
+Control terminal color. The default is
+.BR auto .
+.TP
+.BR --config " " PATH
+Use an explicit Linux kernel configuration.
+.TP
+.BR --format " " text|json
+Select human-readable or versioned machine-readable output.
+.TP
+.BR --root " " PATH
+Inspect an alternate Gentoo installation root.
+.TP
+.BR --snapshot-consistency " " locked|stabilized
+Use Portage locks or a lockless stabilized snapshot.
+.TP
+.B --verbose
+Show detailed unresolved package-policy evidence.
+.SH EXIT STATUS
+.TP
+.B 0
+The command completed successfully and, for
+.BR check ,
+known requirements are satisfied.
+.TP
+.B 1
+Execution or validation failed.
+.TP
+.B 2
+Command-line usage was invalid.
+.TP
+.B 3
+.B check
+found required kernel changes.
+.TP
+.B 4
+.B check
+could not reach a definitive result because package kernel policy remains
+unresolved.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+Disable color when
+.B --color
+is
+.BR auto .
+.SH FILES
+.TP
+.I /proc/config.gz
+Preferred running-kernel configuration when no explicit config is supplied.
+.TP
+.I /usr/src/linux/.config
+Fallback kernel configuration and common target tree.
+.SH SAFETY
+Analysis commands are read-only. Commands that write require explicit output
+paths and publish files atomically. Kernel validation uses temporary output and
+does not modify the selected source tree.
+.SH SEE ALSO
+.BR make (1),
+.BR emerge (1),
+.BR kernel-config (5)

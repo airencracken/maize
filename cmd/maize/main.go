@@ -18,6 +18,7 @@ import (
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/report"
+	"github.com/airencracken/maize/internal/terminal"
 )
 
 const usage = `maize generates and migrates optimized Gentoo kernel configurations
@@ -72,7 +73,7 @@ func (values *repositoryFlags) Set(value string) error {
 }
 
 func runInspect(args []string, stdout, stderr io.Writer) int {
-	inspection, format, code := loadInspection("inspect", args, stderr)
+	inspection, format, style, verbose, code := loadInspection("inspect", args, stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -83,7 +84,9 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 	if format == "json" {
 		err = report.InspectionJSON(stdout, inspection)
 	} else {
-		err = report.InspectionText(stdout, inspection)
+		err = report.InspectionTextWithOptions(
+			stdout, inspection, report.TextOptions{Style: style, Verbose: verbose},
+		)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "write report: %v\n", err)
@@ -92,7 +95,12 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func loadInspection(command string, args []string, stderr io.Writer) (app.Inspection, string, int) {
+func loadInspection(
+	command string,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+) (app.Inspection, string, terminal.Style, bool, int) {
 	flags := flag.NewFlagSet("maize "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	root := flags.String("root", "/", "Gentoo installation root")
@@ -100,29 +108,36 @@ func loadInspection(command string, args []string, stderr io.Writer) (app.Inspec
 	sysfsPath := flags.String("sysfs", "", "sysfs root; default ROOT/sys")
 	procfsPath := flags.String("procfs", "", "procfs root; default ROOT/proc")
 	format := flags.String("format", "text", "output format: text or json")
+	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
+	verbose := flags.Bool("verbose", false, "show all supporting and unresolved evidence")
 	snapshotMode := flags.String("snapshot-consistency", "locked", "snapshot consistency: locked or stabilized")
 	var repositories repositoryFlags
 	flags.Var(&repositories, "repository", "repository NAME=PATH; may be repeated")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return app.Inspection{}, "", -1
+			return app.Inspection{}, "", terminal.Style{}, false, -1
 		}
-		return app.Inspection{}, "", 2
+		return app.Inspection{}, "", terminal.Style{}, false, 2
 	}
 	if flags.NArg() != 0 {
 		fmt.Fprintf(stderr, "maize %s does not accept positional arguments\n", command)
-		return app.Inspection{}, "", 2
+		return app.Inspection{}, "", terminal.Style{}, false, 2
 	}
 	if *format != "text" && *format != "json" {
 		fmt.Fprintf(stderr, "invalid format %q\n", *format)
-		return app.Inspection{}, "", 2
+		return app.Inspection{}, "", terminal.Style{}, false, 2
+	}
+	mode, err := terminal.ParseColorMode(*colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return app.Inspection{}, "", terminal.Style{}, false, 2
 	}
 	consistency := maizegentoo.SnapshotLocked
 	if *snapshotMode == "stabilized" {
 		consistency = maizegentoo.SnapshotStabilized
 	} else if *snapshotMode != "locked" {
 		fmt.Fprintf(stderr, "invalid snapshot consistency %q\n", *snapshotMode)
-		return app.Inspection{}, "", 2
+		return app.Inspection{}, "", terminal.Style{}, false, 2
 	}
 
 	paths := shared.DefaultSystemPaths(*root)
@@ -132,7 +147,7 @@ func loadInspection(command string, args []string, stderr io.Writer) (app.Inspec
 			name, path, found := strings.Cut(raw, "=")
 			if !found || !validRepositoryName(name) || path == "" || seenRepositories[name] {
 				fmt.Fprintf(stderr, "invalid repository %q; want NAME=PATH\n", raw)
-				return app.Inspection{}, "", 2
+				return app.Inspection{}, "", terminal.Style{}, false, 2
 			}
 			seenRepositories[name] = true
 			paths.Repositories = append(paths.Repositories, shared.RepositoryPath{Name: name, Path: path})
@@ -154,14 +169,14 @@ func loadInspection(command string, args []string, stderr io.Writer) (app.Inspec
 	)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", command, err)
-		return app.Inspection{}, "", 1
+		return app.Inspection{}, "", terminal.Style{}, false, 1
 	}
-	return inspection, *format, 0
+	return inspection, *format, terminal.StyleForWriter(mode, stdout), *verbose, 0
 }
 
 func runGenerate(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, _, code := loadInspection("generate", args, stderr)
+		_, _, _, _, code := loadInspection("generate", args, stdout, stderr)
 		if code == -1 {
 			return 0
 		}
@@ -177,7 +192,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "maize generate requires exactly one --kernel-tree PATH")
 		return 2
 	}
-	inspection, _, code := loadInspection("generate", remaining, stderr)
+	inspection, _, style, _, code := loadInspection("generate", remaining, stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -210,13 +225,16 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "generate output: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "wrote target-validated kernel configuration to %s\n", output)
+	fmt.Fprintf(
+		stdout, "%s target-validated kernel configuration to %s\n",
+		style.BoldGreen("wrote"), style.Cyan(output),
+	)
 	fmt.Fprintf(stdout, "target Kconfig resolved %d requested symbol changes\n", len(validation.Changes))
 	return 0
 }
 
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	inspection, _, code := loadInspection("check", args, stderr)
+	inspection, _, style, verbose, code := loadInspection("check", args, stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -224,12 +242,17 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	inspection.Recommendations = app.Unsatisfied(inspection, true)
-	if err := report.InspectionText(stdout, inspection); err != nil {
+	if err := report.InspectionTextWithOptions(
+		stdout, inspection, report.TextOptions{Style: style, Verbose: verbose},
+	); err != nil {
 		fmt.Fprintf(stderr, "write check report: %v\n", err)
 		return 1
 	}
 	if len(inspection.Recommendations) != 0 {
 		return 3
+	}
+	if len(inspection.DynamicKernelPolicy) != 0 {
+		return 4
 	}
 	return 0
 }
@@ -239,7 +262,7 @@ func runImpact(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "maize impact requires --config PATH")
 		return 2
 	}
-	inspection, format, code := loadInspection("impact", args, stderr)
+	inspection, format, style, verbose, code := loadInspection("impact", args, stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -251,7 +274,9 @@ func runImpact(args []string, stdout, stderr io.Writer) int {
 	if format == "json" {
 		err = report.InspectionJSON(stdout, inspection)
 	} else {
-		err = report.InspectionText(stdout, inspection)
+		err = report.InspectionTextWithOptions(
+			stdout, inspection, report.TextOptions{Style: style, Verbose: verbose},
+		)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "write impact report: %v\n", err)
@@ -266,6 +291,7 @@ func runObserve(args []string, stdout, stderr io.Writer) int {
 	root := flags.String("root", "/", "system root")
 	sysfs := flags.String("sysfs", "", "sysfs root; default ROOT/sys")
 	output := flags.String("output", "", "inventory output path")
+	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -276,6 +302,12 @@ func runObserve(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "maize observe requires --output PATH and no positional arguments")
 		return 2
 	}
+	mode, err := terminal.ParseColorMode(*colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	style := terminal.StyleForWriter(mode, stdout)
 	paths := hardware.DefaultSystemPaths(*root)
 	if *sysfs != "" {
 		paths.Sys = *sysfs
@@ -291,7 +323,11 @@ func runObserve(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "observe output: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "recorded %d hardware devices in %s\n", len(inventory.Devices), *output)
+	fmt.Fprintf(
+		stdout, "%s %s hardware devices in %s\n",
+		style.BoldGreen("recorded"), style.Cyan(fmt.Sprint(len(inventory.Devices))),
+		style.Cyan(*output),
+	)
 	return 0
 }
 
@@ -303,6 +339,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	oldConfig := flags.String("old-config", "", "old kernel config")
 	newConfig := flags.String("new-config", "", "new kernel config")
 	format := flags.String("format", "text", "output format: text or json")
+	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -313,6 +350,11 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		*oldConfig == "" || *newConfig == "" ||
 		(*format != "text" && *format != "json") {
 		fmt.Fprintln(stderr, "maize migrate requires old/new Kconfig and config paths")
+		return 2
+	}
+	mode, err := terminal.ParseColorMode(*colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	oldCatalog, err := readKconfig(*oldKconfig)
@@ -339,7 +381,9 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	if *format == "json" {
 		err = report.MigrationJSON(stdout, changes)
 	} else {
-		err = report.MigrationText(stdout, changes)
+		err = report.MigrationTextStyled(
+			stdout, changes, terminal.StyleForWriter(mode, stdout),
+		)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "write migration report: %v\n", err)

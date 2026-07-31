@@ -49,6 +49,7 @@ func TestInspectRejectsInvalidArgumentsBeforeReadingHost(t *testing.T) {
 
 	tests := [][]string{
 		{"inspect", "--format", "yaml"},
+		{"inspect", "--color", "sometimes"},
 		{"inspect", "--snapshot-consistency", "eventual"},
 		{"inspect", "--repository", "missing-separator"},
 		{"inspect", "--repository", "bad/name=/tmp"},
@@ -226,6 +227,19 @@ func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testin
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run([]string{
+		"check", "--root", root, "--config", config,
+		"--repository", "gentoo=" + repository, "--color", "never",
+	}, &stdout, &stderr)
+	if code != 4 ||
+		!strings.Contains(stdout.String(), "Package kernel policy: incomplete") ||
+		!strings.Contains(stdout.String(), "Use --verbose") ||
+		strings.Contains(stdout.String(), "${RUNTIME_SYMBOL}") {
+		t.Fatalf("check exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{
 		"generate", "--root", root, "--config", config, "--output", output,
 		"--repository", "gentoo=" + repository,
 		"--kernel-tree", kernelTree,

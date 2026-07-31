@@ -9,6 +9,7 @@ import (
 	"github.com/airencracken/maize/internal/domain"
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/recommend"
+	"github.com/airencracken/maize/internal/terminal"
 )
 
 type inspectJSON struct {
@@ -102,23 +103,46 @@ type evidenceJSON struct {
 }
 
 func InspectionText(writer io.Writer, inspection app.Inspection) error {
+	return InspectionTextWithOptions(writer, inspection, TextOptions{})
+}
+
+func InspectionTextStyled(
+	writer io.Writer,
+	inspection app.Inspection,
+	style terminal.Style,
+) error {
+	return InspectionTextWithOptions(writer, inspection, TextOptions{Style: style})
+}
+
+type TextOptions struct {
+	Style   terminal.Style
+	Verbose bool
+}
+
+func InspectionTextWithOptions(
+	writer io.Writer,
+	inspection app.Inspection,
+	options TextOptions,
+) error {
+	style := options.Style
 	if _, err := fmt.Fprintf(
-		writer, "Maize inspection\nKernel config: %s (%s)\nHardware devices: %d\nSnapshot consistency: %s\nRepositories: %d\nCandidate issues: %d\nDynamic kernel policies: %d\nInstalled packages: %d\nWorld selections: %d\nSystem selections: %d\nKernel recommendations: %d\n",
-		inspection.ConfigSource.Path, inspection.ConfigSource.Origin,
-		len(inspection.Hardware.Devices), inspection.SnapshotConsistency,
-		len(inspection.Repositories), inspection.CandidateIssues,
-		len(inspection.DynamicKernelPolicy), inspection.InstalledCount, len(inspection.WorldSelections),
-		len(inspection.SystemSelections), len(inspection.Recommendations),
+		writer, "%s\n%s %s (%s)\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n",
+		style.BoldCyan("Maize inspection"),
+		style.Bold("Kernel config:"), style.Cyan(inspection.ConfigSource.Path), inspection.ConfigSource.Origin,
+		style.Bold("Hardware devices:"), style.Cyan(fmt.Sprint(len(inspection.Hardware.Devices))),
+		style.Bold("Snapshot consistency:"), style.Cyan(string(inspection.SnapshotConsistency)),
+		style.Bold("Repositories:"), style.Cyan(fmt.Sprint(len(inspection.Repositories))),
+		style.Bold("Candidate issues:"), countStyle(style, inspection.CandidateIssues),
+		style.Bold("Dynamic kernel policies:"), countStyle(style, len(inspection.DynamicKernelPolicy)),
+		style.Bold("Installed packages:"), style.Cyan(fmt.Sprint(inspection.InstalledCount)),
+		style.Bold("World selections:"), style.Cyan(fmt.Sprint(len(inspection.WorldSelections))),
+		style.Bold("System selections:"), style.Cyan(fmt.Sprint(len(inspection.SystemSelections))),
+		style.Bold("Kernel recommendations:"), style.Cyan(fmt.Sprint(len(inspection.Recommendations))),
 	); err != nil {
 		return err
 	}
-	for _, dynamic := range inspection.DynamicKernelPolicy {
-		if _, err := fmt.Fprintf(
-			writer, "warning: dynamic kernel policy for %s: %s (%s)\n",
-			dynamic.Package.CPV(), dynamic.Expression, dynamic.Reason,
-		); err != nil {
-			return err
-		}
+	if err := writeDynamicPolicySummary(writer, inspection, options); err != nil {
+		return err
 	}
 	for _, item := range inspection.Recommendations {
 		current := "missing"
@@ -126,22 +150,138 @@ func InspectionText(writer io.Writer, inspection app.Inspection) error {
 			current = item.Current.ConfigValue()
 		}
 		if _, err := fmt.Fprintf(
-			writer, "\n%s: %s -> %s (%s, %s)\n  %s\n",
-			item.Symbol.String(), current, item.Desired.ConfigValue(),
-			item.Action, item.Disposition, item.Detail,
+			writer, "\n%s: %s -> %s (%s, %s)\n",
+			style.Cyan(item.Symbol.String()), current,
+			recommendationState(style, item), recommendationAction(style, item),
+			item.Disposition,
 		); err != nil {
 			return err
 		}
-		for _, evidence := range item.Evidence {
-			if _, err := fmt.Fprintf(
-				writer, "  because %s: %s [%s]\n",
-				evidence.Source, evidence.Detail, evidence.Confidence,
-			); err != nil {
+		if !evidenceRepeatsDetail(item) {
+			if _, err := fmt.Fprintf(writer, "  %s\n", item.Detail); err != nil {
 				return err
+			}
+		}
+		for _, evidence := range item.Evidence {
+			if _, err := fmt.Fprintf(writer, "  because %s", evidence.Detail); err != nil {
+				return err
+			}
+			if evidence.Source != "" {
+				if _, err := fmt.Fprintf(writer, " [%s]", style.Magenta(evidence.Source)); err != nil {
+					return err
+				}
+			}
+			if options.Verbose {
+				if _, err := fmt.Fprintf(
+					writer, " [%s]", style.Cyan(string(evidence.Confidence)),
+				); err != nil {
+					return err
+				}
+			}
+			if _, err := fmt.Fprintln(writer); err != nil {
+				return err
+			}
+		}
+		if options.Verbose {
+			for _, provenance := range item.Provenance {
+				if _, err := fmt.Fprintf(
+					writer, "  source %s: %s\n",
+					style.Magenta(provenance.Source), provenance.Detail,
+				); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
+}
+
+func evidenceRepeatsDetail(item recommend.Recommendation) bool {
+	return len(item.Evidence) == 1 && item.Detail != "" &&
+		item.Evidence[0].Detail == item.Detail
+}
+
+func writeDynamicPolicySummary(
+	writer io.Writer,
+	inspection app.Inspection,
+	options TextOptions,
+) error {
+	if len(inspection.DynamicKernelPolicy) == 0 {
+		_, err := fmt.Fprintf(
+			writer, "%s %s\n",
+			options.Style.Bold("Package kernel policy:"), options.Style.Green("complete"),
+		)
+		return err
+	}
+	packages := make(map[string]bool)
+	dispatch := 0
+	for _, dynamic := range inspection.DynamicKernelPolicy {
+		packages[dynamic.Package.CPV()] = true
+		if dynamic.Expression == "inherit linux-info" {
+			dispatch++
+		}
+	}
+	expressions := len(inspection.DynamicKernelPolicy) - dispatch
+	if _, err := fmt.Fprintf(
+		writer, "%s %s\n  %d unresolved findings across %d packages\n  %d runtime dispatch markers; %d unevaluated expressions\n",
+		options.Style.Bold("Package kernel policy:"),
+		options.Style.BoldYellow("incomplete"),
+		len(inspection.DynamicKernelPolicy), len(packages), dispatch, expressions,
+	); err != nil {
+		return err
+	}
+	if !options.Verbose {
+		_, err := fmt.Fprintln(
+			writer, "  Use --verbose to show every unresolved package-policy finding.",
+		)
+		return err
+	}
+	for _, dynamic := range inspection.DynamicKernelPolicy {
+		if _, err := fmt.Fprintf(
+			writer, "  %s %s: %s (%s)\n",
+			options.Style.BoldYellow("unresolved"),
+			options.Style.Magenta(dynamic.Package.CPV()),
+			options.Style.Yellow(dynamic.Expression), dynamic.Reason,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func countStyle(style terminal.Style, count int) string {
+	value := fmt.Sprint(count)
+	if count != 0 {
+		return style.Yellow(value)
+	}
+	return style.Green(value)
+}
+
+func recommendationState(style terminal.Style, item recommend.Recommendation) string {
+	value := item.Desired.ConfigValue()
+	switch item.Action {
+	case recommend.ActionKeep:
+		return style.Green(value)
+	case recommend.ActionDisable:
+		return style.Red(value)
+	default:
+		return style.Yellow(value)
+	}
+}
+
+func recommendationAction(style terminal.Style, item recommend.Recommendation) string {
+	value := string(item.Action)
+	switch item.Action {
+	case recommend.ActionKeep:
+		return style.Green(value)
+	case recommend.ActionDisable:
+		return style.Red(value)
+	default:
+		if item.Disposition == domain.Required {
+			return style.BoldYellow(value)
+		}
+		return style.Yellow(value)
+	}
 }
 
 func InspectionJSON(writer io.Writer, inspection app.Inspection) error {

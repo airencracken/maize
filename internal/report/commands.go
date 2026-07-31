@@ -7,6 +7,7 @@ import (
 
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
+	"github.com/airencracken/maize/internal/terminal"
 )
 
 func HardwareJSON(writer io.Writer, inventory hardware.Inventory) error {
@@ -22,13 +23,24 @@ func HardwareJSON(writer io.Writer, inventory hardware.Inventory) error {
 }
 
 func MigrationText(writer io.Writer, changes []kernel.Change) error {
-	if _, err := fmt.Fprintf(writer, "Kernel migration changes: %d\n", len(changes)); err != nil {
+	return MigrationTextStyled(writer, changes, terminal.Style{})
+}
+
+func MigrationTextStyled(
+	writer io.Writer,
+	changes []kernel.Change,
+	style terminal.Style,
+) error {
+	if _, err := fmt.Fprintf(
+		writer, "%s %s\n",
+		style.BoldCyan("Kernel migration changes:"), style.Cyan(fmt.Sprint(len(changes))),
+	); err != nil {
 		return err
 	}
 	for _, change := range changes {
 		if _, err := fmt.Fprintf(
 			writer, "%s: %v\n  %s\n",
-			change.Symbol.String(), change.Kinds, change.Explanation.Summary,
+			style.Cyan(change.Symbol.String()), change.Kinds, change.Explanation.Summary,
 		); err != nil {
 			return err
 		}
