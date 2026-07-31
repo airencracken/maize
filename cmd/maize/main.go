@@ -28,7 +28,7 @@ const usage = `maize generates and migrates optimized Gentoo kernel configuratio
 
 Usage:
   maize inspect [--root /] [--config PATH] [--format text|json]
-  maize generate --kernel-tree PATH --output PATH [inspection options]
+  maize generate --kernel-tree PATH --output PATH [--experimental-best-guess|--experimental-minimize] [inspection options]
   maize migrate [--root /] [--format text|json]
   maize migrate --old-kconfig PATH --new-kconfig PATH --old-config PATH --new-config PATH
   maize check [inspection options]
@@ -164,6 +164,7 @@ func loadInspection(
 		hardwarePaths.Sys = *sysfsPath
 	}
 	if *procfsPath != "" {
+		hardwarePaths.Proc = *procfsPath
 		configPaths.ProcConfig = filepath.Join(*procfsPath, "config.gz")
 		configPaths.ProcRelease = filepath.Join(*procfsPath, "sys", "kernel", "osrelease")
 	}
@@ -180,6 +181,7 @@ func loadInspection(
 
 func runGenerate(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprintln(stderr, "Generation options: --kernel-tree PATH --output PATH [--experimental-best-guess|--experimental-minimize]")
 		_, _, _, _, code := loadInspection("generate", args, stdout, stderr)
 		if code == -1 {
 			return 0
@@ -194,6 +196,20 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	kernelTree, remaining, err := takeOption(remaining, "--kernel-tree")
 	if err != nil || kernelTree == "" {
 		fmt.Fprintln(stderr, "maize generate requires exactly one --kernel-tree PATH")
+		return 2
+	}
+	experimental, remaining, err := takeSwitch(remaining, "--experimental-best-guess")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	minimize, remaining, err := takeSwitch(remaining, "--experimental-minimize")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if experimental && minimize {
+		fmt.Fprintln(stderr, "--experimental-best-guess and --experimental-minimize are mutually exclusive")
 		return 2
 	}
 	inspection, _, style, _, code := loadInspection("generate", remaining, stdout, stderr)
@@ -216,6 +232,34 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "generate: %v\n", err)
 		return 1
 	}
+	optimizedModules := 0
+	observedModules := 0
+	if experimental || minimize {
+		protected := make([]kernel.Symbol, 0, len(inspection.Recommendations))
+		for _, recommendation := range inspection.Recommendations {
+			protected = append(protected, recommendation.Symbol)
+		}
+		modules := append([]string(nil), inspection.Hardware.LoadedModules...)
+		for _, device := range inspection.Hardware.Devices {
+			if device.Presence == hardware.Present {
+				modules = append(modules, device.Modules...)
+			}
+		}
+		strategy := kernel.OptimizeBestGuess
+		if minimize {
+			strategy = kernel.OptimizeMinimize
+		}
+		optimization, optimizeErr := kernel.ExperimentalOptimize(
+			context.Background(), kernelTree, candidate, protected, modules, strategy,
+		)
+		if optimizeErr != nil {
+			fmt.Fprintf(stderr, "generate experimental optimization: %v\n", optimizeErr)
+			return 1
+		}
+		candidate = optimization.Config
+		optimizedModules = optimization.DisabledModules
+		observedModules = len(optimization.ObservedModules)
+	}
 	validation, err := kernel.ValidateTarget(context.Background(), kernelTree, candidate)
 	if err != nil {
 		fmt.Fprintf(stderr, "generate validation: %v\n", err)
@@ -234,6 +278,14 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		style.BoldGreen("wrote"), style.Cyan(output),
 	)
 	fmt.Fprintf(stdout, "target Kconfig resolved %d requested symbol changes\n", len(validation.Changes))
+	if experimental || minimize {
+		strategy := "best guess"
+		if minimize {
+			strategy = "minimize"
+		}
+		fmt.Fprintf(stdout, "experimental %s disabled %d unobserved module options; preserved %d observed hardware modules\n", strategy, optimizedModules, observedModules)
+		fmt.Fprintln(stdout, "experimental result: keep the existing working config and review this proposal before installing or booting it")
+	}
 	return 0
 }
 
@@ -607,6 +659,25 @@ func hasOption(args []string, name string) bool {
 		}
 	}
 	return false
+}
+
+func takeSwitch(args []string, name string) (bool, []string, error) {
+	found := false
+	remaining := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == name {
+			if found {
+				return false, nil, fmt.Errorf("duplicate %s", name)
+			}
+			found = true
+			continue
+		}
+		if strings.HasPrefix(arg, name+"=") {
+			return false, nil, fmt.Errorf("%s does not accept a value", name)
+		}
+		remaining = append(remaining, arg)
+	}
+	return found, remaining, nil
 }
 
 func validRepositoryName(value string) bool {

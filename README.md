@@ -27,6 +27,8 @@ maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
 maize generate --kernel-tree /usr/src/linux --output ./candidate.config
+maize generate --kernel-tree /usr/src/linux --output ./best-guess.config --experimental-best-guess
+maize generate --kernel-tree /usr/src/linux --output ./minimal.config --experimental-minimize
 maize migrate
 maize migrate --old-kconfig OLD --new-kconfig NEW --old-config OLD --new-config NEW
 maize check --snapshot-consistency stabilized
@@ -47,8 +49,12 @@ Unresolved package policy is summarized by default and expanded with
 `olddefconfig` in an isolated output directory, verifies that required Maize
 decisions survived Kconfig dependency resolution, and atomically writes only
 the validated result. Hardware-to-Kconfig translation and configuration
-minimization remain incomplete, so generated configurations are not yet
-claimed to be optimal.
+minimization are experimental. `--experimental-best-guess` retains fallback
+families for removable devices, filesystems, networking, and audio while
+pruning other unobserved module options. `--experimental-minimize` omits that
+safety buffer and attempts the smallest result justified by present hardware,
+loaded modules, and known package policy. Both preserve the existing config,
+write a separate proposal, and refuse unresolved dynamic package policy.
 
 With no artifact overrides, `migrate` loads the running kernel configuration,
 discovers versioned source trees below `/usr/src`, selects the newest release

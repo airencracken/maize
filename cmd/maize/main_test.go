@@ -87,6 +87,19 @@ func TestGenerateRequiresOutputAndTargetTreeBeforeReadingHost(t *testing.T) {
 	}
 }
 
+func TestExperimentalBestGuessSwitchRejectsValuesAndDuplicates(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"--experimental-best-guess=true"},
+		{"--experimental-best-guess", "--experimental-best-guess"},
+	} {
+		found, remaining, err := takeSwitch(args, "--experimental-best-guess")
+		if err == nil || found || remaining != nil {
+			t.Fatalf("takeSwitch(%v) = %v, %v, %v", args, found, remaining, err)
+		}
+	}
+}
+
 func TestInspectCommandRunsEndToEndAgainstAlternateRoot(t *testing.T) {
 	t.Parallel()
 

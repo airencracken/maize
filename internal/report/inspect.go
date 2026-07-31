@@ -52,8 +52,9 @@ type configSourceJSON struct {
 }
 
 type hardwareJSON struct {
-	Schema  uint         `json:"schema"`
-	Devices []deviceJSON `json:"devices"`
+	Schema        uint         `json:"schema"`
+	Devices       []deviceJSON `json:"devices"`
+	LoadedModules []string     `json:"loaded_modules"`
 }
 
 type deviceJSON struct {
@@ -344,6 +345,7 @@ func InspectionJSON(writer io.Writer, inspection app.Inspection) error {
 func hardwareDocument(inventory hardware.Inventory) hardwareJSON {
 	result := hardwareJSON{
 		Schema: inventory.Schema, Devices: make([]deviceJSON, 0, len(inventory.Devices)),
+		LoadedModules: append([]string{}, inventory.LoadedModules...),
 	}
 	for _, device := range inventory.Devices {
 		translated := deviceJSON{

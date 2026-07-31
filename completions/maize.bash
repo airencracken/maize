@@ -63,7 +63,7 @@ _maize()
 			COMPREPLY=( $(compgen -W "$common" -- "$cur") )
 			;;
 		generate)
-			COMPREPLY=( $(compgen -W "$common --kernel-tree --output" -- "$cur") )
+			COMPREPLY=( $(compgen -W "$common --experimental-best-guess --experimental-minimize --kernel-tree --output" -- "$cur") )
 			;;
 		impact)
 			COMPREPLY=( $(compgen -W "$common" -- "$cur") )

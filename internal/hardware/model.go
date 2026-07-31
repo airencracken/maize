@@ -77,8 +77,9 @@ func (d Device) Validate() error {
 }
 
 type Inventory struct {
-	Schema  uint
-	Devices []Device
+	Schema        uint
+	Devices       []Device
+	LoadedModules []string
 }
 
 func (i Inventory) Validate() error {
@@ -86,6 +87,15 @@ func (i Inventory) Validate() error {
 		return fmt.Errorf("unsupported hardware inventory schema %d", i.Schema)
 	}
 	seen := make(map[string]bool)
+	for index, module := range i.LoadedModules {
+		if strings.TrimSpace(module) != module || module == "" || strings.ContainsAny(module, " \t\r\n/") {
+			return fmt.Errorf("loaded module %d has invalid name %q", index, module)
+		}
+		if seen["module\x00"+module] {
+			return fmt.Errorf("loaded module %d duplicates %q", index, module)
+		}
+		seen["module\x00"+module] = true
+	}
 	for index, device := range i.Devices {
 		if err := device.Validate(); err != nil {
 			return fmt.Errorf("device %d: %w", index, err)

@@ -26,6 +26,9 @@ func TestCollectWalksSysfsDevicesDriversAndModules(t *testing.T) {
 	if inventory.Schema != 1 || len(inventory.Devices) != 2 {
 		t.Fatalf("inventory = %#v", inventory)
 	}
+	if !reflect.DeepEqual(inventory.LoadedModules, []string{"iwlwifi", "zfs"}) {
+		t.Fatalf("loaded modules = %v", inventory.LoadedModules)
+	}
 	var pci hardware.Device
 	for _, device := range inventory.Devices {
 		if device.Bus == hardware.BusPCI {
@@ -121,17 +124,21 @@ func sysfsFixture(t *testing.T) hardware.SystemPaths {
 
 	root := t.TempDir()
 	sys := filepath.Join(root, "sys")
+	proc := filepath.Join(root, "proc")
 	device := filepath.Join(sys, "devices", "pci0000:00", "0000:00:14.3")
 	driver := filepath.Join(sys, "bus", "pci", "drivers", "iwlwifi")
 	module := filepath.Join(sys, "module", "iwlwifi")
 	for _, directory := range []string{
-		device, driver, module,
+		device, driver, module, proc,
 		filepath.Join(sys, "bus", "pci", "devices"),
 		filepath.Join(sys, "devices", "system", "cpu", "cpu0"),
 	} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(proc, "modules"), []byte("zfs 1 0 - Live 0x0\niwlwifi 2 1 - Live 0x0\nzfs 1 0 - Live 0x0\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	for name, value := range map[string]string{
 		"vendor": "0x8086\n", "device": "0x51f1\n",
@@ -150,5 +157,5 @@ func sysfsFixture(t *testing.T) hardware.SystemPaths {
 	if err := os.Symlink(module, filepath.Join(driver, "module")); err != nil {
 		t.Fatal(err)
 	}
-	return hardware.SystemPaths{Sys: sys}
+	return hardware.SystemPaths{Sys: sys, Proc: proc}
 }

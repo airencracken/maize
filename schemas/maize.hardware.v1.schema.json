@@ -12,6 +12,7 @@
       "required": ["schema", "devices"],
       "properties": {
         "schema": {"const": 1},
+        "loaded_modules": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
         "devices": {"type": "array"}
       }
     }

@@ -31,6 +31,15 @@ and
 .BR --output .
 The target kernel's Kconfig evaluator runs against a temporary configuration;
 the source tree is not modified.
+The experimental
+.B --experimental-best-guess
+mode prunes unobserved module options while retaining common removable-device,
+filesystem, networking, and audio fallback families.
+.B --experimental-minimize
+omits that fallback buffer and attempts a smaller configuration. Both use
+present hardware, loaded modules, and known package policy as evidence, refuse
+unresolved dynamic policy, and write only a proposal; neither can guarantee
+that disconnected hardware has been observed.
 .TP
 .B migrate
 By default, compare the running kernel configuration with the result of

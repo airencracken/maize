@@ -21,13 +21,14 @@ const (
 )
 
 type SystemPaths struct {
-	Sys string
+	Sys  string
+	Proc string
 }
 
 func DefaultSystemPaths(root string) SystemPaths {
 	clean := filepath.Clean(root)
 	return SystemPaths{
-		Sys: filepath.Join(clean, "sys"),
+		Sys: filepath.Join(clean, "sys"), Proc: filepath.Join(clean, "proc"),
 	}
 }
 
@@ -86,11 +87,52 @@ func Collect(
 		}
 		return devices[left].ID.Address < devices[right].ID.Address
 	})
-	inventory := Inventory{Schema: 1, Devices: devices}
+	var loadedModules []string
+	if paths.Proc != "" {
+		loadedModules, err = readLoadedModules(filepath.Join(paths.Proc, "modules"))
+		if err != nil {
+			return Inventory{}, err
+		}
+	}
+	inventory := Inventory{Schema: 1, Devices: devices, LoadedModules: loadedModules}
 	if err := inventory.Validate(); err != nil {
 		return Inventory{}, err
 	}
 	return inventory, nil
+}
+
+func readLoadedModules(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open loaded modules: %w", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 8*1024*1024+1))
+	if err != nil {
+		return nil, fmt.Errorf("read loaded modules: %w", err)
+	}
+	if len(data) > 8*1024*1024 {
+		return nil, fmt.Errorf("loaded modules exceeds size limit")
+	}
+	seen := make(map[string]bool)
+	var modules []string
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		name := fields[0]
+		if strings.Contains(name, "/") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		modules = append(modules, name)
+	}
+	sort.Strings(modules)
+	return modules, nil
 }
 
 func validateSysRoot(path string) (string, error) {
