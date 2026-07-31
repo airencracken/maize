@@ -35,19 +35,10 @@ func TestEveryDeclaredCommandExists(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
-			args := []string{command}
-			if command == "inspect" {
-				args = append(args, "--help")
-			}
+			args := []string{command, "--help"}
 			exitCode := run(args, &stdout, &stderr)
-			if command == "inspect" {
-				if exitCode != 0 || !strings.Contains(stderr.String(), "Usage of maize inspect") {
-					t.Fatalf("inspect route: exit %d, stderr %q", exitCode, stderr.String())
-				}
-			} else {
-				if exitCode != 2 || !strings.Contains(stderr.String(), "not implemented yet") {
-					t.Fatalf("%s route: exit %d, stderr %q", command, exitCode, stderr.String())
-				}
+			if exitCode != 0 || !strings.Contains(stderr.String(), "Usage of maize "+command) {
+				t.Fatalf("%s route: exit %d, stderr %q", command, exitCode, stderr.String())
 			}
 		})
 	}
@@ -101,6 +92,96 @@ func TestInspectCommandRunsEndToEndAgainstAlternateRoot(t *testing.T) {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Fatalf("output missing %q:\n%s", expected, stdout.String())
 		}
+	}
+}
+
+func TestGenerateCheckImpactAndObserveRunAgainstAlternateRoot(t *testing.T) {
+	t.Parallel()
+
+	root := commandFixture(t)
+	config := filepath.Join(root, "kernel.config")
+	commandWrite(t, config,
+		"CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\n"+
+			"# CONFIG_SECCOMP_FILTER is not set\n")
+	output := filepath.Join(root, "generated.config")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"generate", "--root", root, "--config", config, "--output", output,
+	}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("generate exit %d, stderr %q", code, stderr.String())
+	}
+	generated, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(generated), "CONFIG_SECCOMP_FILTER=y") {
+		t.Fatalf("generated config:\n%s", generated)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"check", "--root", root, "--config", output}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("generated check exit %d, stdout %q, stderr %q",
+			code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"check", "--root", root, "--config", config}, &stdout, &stderr)
+	if code != 3 || !strings.Contains(stdout.String(), "CONFIG_SECCOMP_FILTER") {
+		t.Fatalf("check exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"impact", "--root", root, "--config", config}, &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), "CONFIG_SECCOMP_FILTER") {
+		t.Fatalf("impact exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+
+	inventory := filepath.Join(root, "hardware.json")
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"observe", "--root", root, "--output", inventory}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("observe exit %d, stderr %q", code, stderr.String())
+	}
+	data, err := os.ReadFile(inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"schema": "maize.hardware/v1"`) {
+		t.Fatalf("hardware inventory:\n%s", data)
+	}
+}
+
+func TestMigrateCommandReportsSemanticChanges(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	oldKconfig := filepath.Join(root, "old.Kconfig")
+	newKconfig := filepath.Join(root, "new.Kconfig")
+	oldConfig := filepath.Join(root, "old.config")
+	newConfig := filepath.Join(root, "new.config")
+	commandWrite(t, oldKconfig, "config TEST\n\tbool \"Old\"\n")
+	commandWrite(t, newKconfig, "config TEST\n\tbool \"New\"\n")
+	commandWrite(t, oldConfig, "# CONFIG_TEST is not set\n")
+	commandWrite(t, newConfig, "CONFIG_TEST=y\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"migrate", "--old-kconfig", oldKconfig, "--new-kconfig", newKconfig,
+		"--old-config", oldConfig, "--new-config", newConfig, "--format", "json",
+	}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), `"schema": "maize.migration/v1"`) ||
+		!strings.Contains(stdout.String(), `"CONFIG_TEST"`) {
+		t.Fatalf("migrate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 }
 

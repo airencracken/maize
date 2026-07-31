@@ -24,18 +24,21 @@ including nichoski/kergen.
 maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
-maize generate
-maize migrate --target /usr/src/linux
-maize check
+maize generate --output ./candidate.config
+maize migrate --old-kconfig OLD --new-kconfig NEW --old-config OLD --new-config NEW
+maize check --snapshot-consistency stabilized
 maize impact --config ./proposed.config
+maize observe --output ./hardware.json
 ```
 
-The intended output is a validated `.config` plus an audit report explaining
-each material decision, its evidence, its confidence, and any unresolved
-operator choices.
+All declared commands have an executable first implementation. `inspect`,
+`check`, `impact`, and `migrate` are read-only. `generate` and `observe` require
+explicit output paths and write atomically.
 
-`inspect` is implemented and read-only. The remaining commands describe the
-planned workflow and currently report that they are not implemented.
+Generated configurations are candidates, not yet final validated output.
+Hardware-to-Kconfig translation, full target-tree traversal, and validation
+through the target kernel's own Kconfig tools remain required before Maize can
+claim an optimal build configuration.
 
 Consistent snapshots observe Portage state locks by default. Run `inspect` as a
 user that can read those lock files, or explicitly request two-pass lockless

@@ -95,6 +95,34 @@ func TestConfigEntriesAreDeterministicAndOwned(t *testing.T) {
 	}
 }
 
+func TestConfigWithStatesAndWriteAreDeterministic(t *testing.T) {
+	t.Parallel()
+
+	config, err := kernel.ParseConfig("fixture", strings.NewReader(
+		"CONFIG_ZED=m\n# CONFIG_ALPHA is not set\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha := mustSymbol(t, "ALPHA")
+	candidate, err := config.WithStates(map[kernel.Symbol]kernel.State{
+		alpha: kernel.Yes(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := candidate.Write(&output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "CONFIG_ALPHA=y\nCONFIG_ZED=m\n" {
+		t.Fatalf("canonical config:\n%s", output.String())
+	}
+	if entry, _ := config.Get(alpha); entry.State != kernel.No() {
+		t.Fatalf("input config mutated: %#v", entry)
+	}
+}
+
 func FuzzParseConfigNeverPanics(f *testing.F) {
 	f.Add("CONFIG_EXT4_FS=y\n")
 	f.Add("# CONFIG_SECURITY_LANDLOCK is not set\n")

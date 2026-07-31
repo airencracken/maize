@@ -430,6 +430,37 @@ build diagnostics, or host compatibility checks. The reusable candidate would
 be bounded Linux host observation and configuration-source provenance; the
 translation from devices to kernel capabilities must remain Maize-specific.
 
+### Command-suite integration findings
+
+Implementing `generate`, `check`, `impact`, `observe`, and `migrate` produced
+the following shared-library targets:
+
+1. Needed now: canonical multiline Portage assignment parsing, as already
+   identified by the live `make.globals` failure. Every package-aware command
+   is blocked on a normal live system until this is accepted by Gentooling.
+2. Needed soon: repository candidate enumeration and structured metadata
+   (`PackageID`, KEYWORDS, IUSE, slot, repository, and relevant dependency
+   fields). Generate and impact can analyze installed state today but cannot
+   safely reason about the package version selected by a future update.
+3. Needed soon: structured ebuild/eclass kernel requirements when a safe source
+   can be defined. Arise's repository compatibility audit confirms use of
+   `linux-info.eclass`, but Arise does not currently expose evaluated
+   `check_extra_config` requirements. Gentooling should own repository and
+   ebuild truth; Maize should own translation into kernel decisions.
+4. Likely soon: installed out-of-tree kernel module package state and rebuild
+   intent. Both Arise's package lifecycle and Maize's kernel compatibility
+   checks need to know which installed packages provide modules for a kernel
+   ABI. This should become a shared structured contract rather than command
+   output or Maize-side VDB parsing.
+5. Likely soon: snapshot-bound prospective visibility and USE evaluation, so
+   generate and impact can evaluate candidate metadata against the exact
+   installed/configuration/selection observation.
+
+The sysfs collector, kernel config discovery, Kconfig migration comparison,
+candidate rendering, and atomic output remain Maize responsibilities. Arise
+does not currently consume equivalent host evidence, so promoting those pieces
+would be premature.
+
 ## Needed now
 
 ### 1. Installed package inventory

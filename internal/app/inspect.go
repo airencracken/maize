@@ -19,6 +19,7 @@ const InspectSchema = "maize.inspect/v2"
 type Inspection struct {
 	Schema              string
 	ConfigSource        kernel.ConfigSource
+	CurrentConfig       kernel.Config
 	Hardware            hardware.Inventory
 	Repositories        []maizegentoo.RepositoryEvidence
 	SnapshotConsistency maizegentoo.SnapshotConsistency
@@ -102,6 +103,7 @@ func inspectWithInputs(
 	}
 	return Inspection{
 		Schema: InspectSchema, ConfigSource: configSource, Hardware: inventory,
+		CurrentConfig:       config,
 		Repositories:        append([]maizegentoo.RepositoryEvidence(nil), snapshot.Repositories...),
 		SnapshotConsistency: snapshot.Consistency,
 		InstalledCount:      len(snapshot.Installed.Packages),

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.migration.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "changes"],
+  "properties": {
+    "schema": {"const": "maize.migration/v1"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "kinds", "before", "after", "summary"],
+        "properties": {
+          "symbol": {"type": "string", "pattern": "^CONFIG_[A-Za-z0-9_]+$"},
+          "kinds": {"type": "array", "items": {"type": "string"}},
+          "before": {"type": ["string", "null"]},
+          "after": {"type": ["string", "null"]},
+          "summary": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

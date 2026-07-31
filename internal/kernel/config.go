@@ -78,3 +78,42 @@ func (c Config) Entries() []Entry {
 	sort.Slice(result, func(i, j int) bool { return result[i].Symbol < result[j].Symbol })
 	return result
 }
+
+// WithStates returns an owned configuration with the supplied states applied.
+// Invalid symbols or states fail atomically.
+func (c Config) WithStates(states map[Symbol]State) (Config, error) {
+	result := Config{entries: make(map[Symbol]Entry, len(c.entries)+len(states))}
+	for symbol, entry := range c.entries {
+		result.entries[symbol] = entry
+	}
+	for symbol, state := range states {
+		if _, err := ParseSymbol(symbol.String()); err != nil {
+			return Config{}, err
+		}
+		parsed, err := ParseState(state.ConfigValue())
+		if err != nil || parsed != state {
+			return Config{}, fmt.Errorf("%s has invalid state", symbol.String())
+		}
+		result.entries[symbol] = Entry{Symbol: symbol, State: state}
+	}
+	return result, nil
+}
+
+// Write emits a deterministic canonical Linux configuration.
+func (c Config) Write(writer io.Writer) error {
+	buffered := bufio.NewWriter(writer)
+	for _, entry := range c.Entries() {
+		var err error
+		if entry.State.Kind == StateNo {
+			_, err = fmt.Fprintf(buffered, "# %s is not set\n", entry.Symbol.String())
+		} else {
+			_, err = fmt.Fprintf(
+				buffered, "%s=%s\n", entry.Symbol.String(), entry.State.ConfigValue(),
+			)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return buffered.Flush()
+}

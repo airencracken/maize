@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.hardware.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "hardware"],
+  "properties": {
+    "schema": {"const": "maize.hardware/v1"},
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "devices"],
+      "properties": {
+        "schema": {"const": 1},
+        "devices": {"type": "array"}
+      }
+    }
+  }
+}
