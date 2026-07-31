@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.migration.v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "context", "changes"],
+  "properties": {
+    "schema": {"const": "maize.migration/v2"},
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["running_release", "running_config", "target_release", "target_tree"],
+      "properties": {
+        "running_release": {"type": "string", "minLength": 1},
+        "running_config": {"type": "string", "minLength": 1},
+        "target_release": {"type": "string", "minLength": 1},
+        "target_tree": {"type": "string", "minLength": 1}
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "kinds", "before", "after", "summary"],
+        "properties": {
+          "symbol": {"type": "string", "pattern": "^CONFIG_[A-Za-z0-9_]+$"},
+          "kinds": {"type": "array", "items": {"type": "string"}},
+          "before": {"type": ["string", "null"]},
+          "after": {"type": ["string", "null"]},
+          "summary": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

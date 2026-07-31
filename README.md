@@ -27,6 +27,7 @@ maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
 maize generate --kernel-tree /usr/src/linux --output ./candidate.config
+maize migrate
 maize migrate --old-kconfig OLD --new-kconfig NEW --old-config OLD --new-config NEW
 maize check --snapshot-consistency stabilized
 maize impact --config ./proposed.config
@@ -48,6 +49,12 @@ decisions survived Kconfig dependency resolution, and atomically writes only
 the validated result. Hardware-to-Kconfig translation and configuration
 minimization remain incomplete, so generated configurations are not yet
 claimed to be optimal.
+
+With no artifact overrides, `migrate` loads the running kernel configuration,
+discovers versioned source trees below `/usr/src`, selects the newest release
+using kernel-version ordering, and resolves the running configuration through
+that target tree. The report always identifies the running release, config
+source, target release, and selected source tree.
 
 Consistent snapshots observe Portage state locks by default. Run `inspect` as a
 user that can read those lock files, or explicitly request two-pass lockless

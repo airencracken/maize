@@ -172,6 +172,8 @@ maize observe
 
 - Load two kernel source trees and an old `.config`.
 - Run target `olddefconfig` in an isolated output directory.
+- Default to the running configuration and newest installed versioned source
+  tree while retaining explicit artifact overrides.
 - Classify added, removed, renamed, replaced, and behavior-changing symbols.
 - Explain target-induced value changes.
 - Emit deterministic text and JSON reports.

@@ -48,8 +48,11 @@ validated configuration atomically.
 
 @section migrate
 
-@command{maize migrate} compares old and new Kconfig and configuration
-artifacts. It reports meaningful symbol and value changes.
+With no artifact arguments, @command{maize migrate} loads the running kernel
+configuration, discovers versioned source trees below @file{/usr/src}, selects
+the newest kernel release, and resolves the running configuration through that
+target tree. The report names both releases and paths. Supplying all four
+old/new Kconfig and configuration options retains explicit artifact comparison.
 
 @section check
 

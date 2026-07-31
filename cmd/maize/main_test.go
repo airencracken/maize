@@ -279,6 +279,46 @@ func TestMigrateCommandReportsSemanticChanges(t *testing.T) {
 	}
 }
 
+func TestMigrateDefaultsFromRunningKernelToLatestInstalledSource(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	commandWrite(t, filepath.Join(root, "proc", "sys", "kernel", "osrelease"), "6.9.12-gentoo\n")
+	commandWrite(t, filepath.Join(root, "proc", "config.gz"),
+		"CONFIG_KEEP=y\n# CONFIG_NEW is not set\n")
+	commandKernelSourceFixture(t, root, "6.9.12-gentoo",
+		"olddefconfig:\n\t@test -f \"$(KCONFIG_CONFIG)\"\n")
+	target := commandKernelSourceFixture(t, root, "6.10.2-gentoo",
+		"olddefconfig:\n\t@printf 'CONFIG_KEEP=y\\nCONFIG_NEW=y\\n' > \"$(KCONFIG_CONFIG)\"\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"migrate", "--root", root, "--format", "json", "--color", "never",
+	}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), `"schema": "maize.migration/v2"`) ||
+		!strings.Contains(stdout.String(), `"running_release": "6.9.12-gentoo"`) ||
+		!strings.Contains(stdout.String(), `"target_release": "6.10.2-gentoo"`) ||
+		!strings.Contains(stdout.String(), `"target_tree": "`+target+`"`) ||
+		!strings.Contains(stdout.String(), `"symbol": "CONFIG_NEW"`) {
+		t.Fatalf("migrate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestMigrateRejectsPartialExplicitArtifactsBeforeReadingHost(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"migrate", "--old-config", "old.config", "--new-config", "new.config",
+	}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "all four explicit") {
+		t.Fatalf("migrate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
 func commandFixture(t *testing.T) string {
 	t.Helper()
 
@@ -328,6 +368,15 @@ func commandKernelTreeFixture(t *testing.T) string {
 	commandWrite(t, filepath.Join(tree, "Kconfig"), "mainmenu \"Fixture\"\n")
 	commandWrite(t, filepath.Join(tree, "Makefile"),
 		"olddefconfig:\n\t@test -f \"$(KCONFIG_CONFIG)\"\n")
+	return tree
+}
+
+func commandKernelSourceFixture(t *testing.T, root, release, makefile string) string {
+	t.Helper()
+
+	tree := filepath.Join(root, "usr", "src", "linux-"+release)
+	commandWrite(t, filepath.Join(tree, "Kconfig"), "mainmenu \"Fixture\"\n")
+	commandWrite(t, filepath.Join(tree, "Makefile"), makefile)
 	return tree
 }
 

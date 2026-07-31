@@ -33,8 +33,11 @@ The target kernel's Kconfig evaluator runs against a temporary configuration;
 the source tree is not modified.
 .TP
 .B migrate
-Compare old and new Kconfig and configuration artifacts and explain semantic
-changes.
+By default, compare the running kernel configuration with the result of
+migrating it through the newest installed source tree below
+.IR /usr/src .
+The report identifies both releases and the selected source. Supplying all four
+old/new Kconfig and configuration options retains explicit artifact comparison.
 .TP
 .B check
 Check known required kernel capabilities. Exit status 3 indicates known

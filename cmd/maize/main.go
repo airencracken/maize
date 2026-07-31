@@ -26,6 +26,7 @@ const usage = `maize generates and migrates optimized Gentoo kernel configuratio
 Usage:
   maize inspect [--root /] [--config PATH] [--format text|json]
   maize generate --kernel-tree PATH --output PATH [inspection options]
+  maize migrate [--root /] [--format text|json]
   maize migrate --old-kconfig PATH --new-kconfig PATH --old-config PATH --new-config PATH
   maize check [inspection options]
   maize impact --config PATH [inspection options]
@@ -338,6 +339,8 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	newKconfig := flags.String("new-kconfig", "", "new Kconfig artifact")
 	oldConfig := flags.String("old-config", "", "old kernel config")
 	newConfig := flags.String("new-config", "", "new kernel config")
+	root := flags.String("root", "/", "Gentoo installation root")
+	procfs := flags.String("procfs", "", "procfs root; default ROOT/proc")
 	format := flags.String("format", "text", "output format: text or json")
 	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
 	if err := flags.Parse(args); err != nil {
@@ -346,16 +349,30 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if flags.NArg() != 0 || *oldKconfig == "" || *newKconfig == "" ||
-		*oldConfig == "" || *newConfig == "" ||
-		(*format != "text" && *format != "json") {
-		fmt.Fprintln(stderr, "maize migrate requires old/new Kconfig and config paths")
+	if flags.NArg() != 0 || (*format != "text" && *format != "json") {
+		fmt.Fprintln(stderr, "maize migrate accepts no positional arguments")
 		return 2
 	}
 	mode, err := terminal.ParseColorMode(*colorMode)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
+	}
+	artifactCount := 0
+	for _, value := range []string{*oldKconfig, *newKconfig, *oldConfig, *newConfig} {
+		if value != "" {
+			artifactCount++
+		}
+	}
+	if artifactCount != 0 && artifactCount != 4 {
+		fmt.Fprintln(
+			stderr,
+			"maize migrate requires all four explicit old/new Kconfig and config paths, or none",
+		)
+		return 2
+	}
+	if artifactCount == 0 {
+		return runDefaultMigrate(*root, *procfs, *format, mode, stdout, stderr)
 	}
 	oldCatalog, err := readKconfig(*oldKconfig)
 	if err != nil {
@@ -383,6 +400,65 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	} else {
 		err = report.MigrationTextStyled(
 			stdout, changes, terminal.StyleForWriter(mode, stdout),
+		)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "write migration report: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runDefaultMigrate(
+	root string,
+	procfs string,
+	format string,
+	mode terminal.ColorMode,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	ctx := context.Background()
+	paths := kernel.DefaultConfigPaths(root)
+	if procfs != "" {
+		paths.ProcConfig = filepath.Join(procfs, "config.gz")
+		paths.ProcRelease = filepath.Join(procfs, "sys", "kernel", "osrelease")
+	}
+	running, source, err := kernel.LoadConfig(ctx, paths)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate running kernel: %v\n", err)
+		return 1
+	}
+	if source.RunningRelease == "" {
+		fmt.Fprintln(stderr, "migrate: running kernel release is unavailable")
+		return 1
+	}
+	inventory, err := kernel.DiscoverSourceTrees(root, source.RunningRelease)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate target discovery: %v\n", err)
+		return 1
+	}
+	validated, err := kernel.ValidateTarget(ctx, inventory.Target.Path, running)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate target validation: %v\n", err)
+		return 1
+	}
+	emptyCatalog, err := kernel.NewCatalog()
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate: initialize Kconfig catalog: %v\n", err)
+		return 1
+	}
+	changes := kernel.Compare(emptyCatalog, emptyCatalog, running, validated.Config)
+	reportContext := report.MigrationContext{
+		RunningRelease: source.RunningRelease,
+		RunningConfig:  source.Path,
+		TargetRelease:  inventory.Target.Release,
+		TargetTree:     inventory.Target.Path,
+	}
+	if format == "json" {
+		err = report.MigrationJSONWithContext(stdout, reportContext, changes)
+	} else {
+		err = report.MigrationTextWithContext(
+			stdout, reportContext, changes, terminal.StyleForWriter(mode, stdout),
 		)
 	}
 	if err != nil {

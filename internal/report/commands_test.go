@@ -8,6 +8,7 @@ import (
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/report"
+	"github.com/airencracken/maize/internal/terminal"
 )
 
 func TestHardwareJSONUsesVersionedOwnedContract(t *testing.T) {
@@ -43,5 +44,32 @@ func TestMigrationReportsAreDeterministic(t *testing.T) {
 	if first.String() != second.String() ||
 		!strings.Contains(first.String(), `"schema": "maize.migration/v1"`) {
 		t.Fatalf("migration JSON:\n%s\n%s", first.String(), second.String())
+	}
+}
+
+func TestContextualMigrationReportsIdentifyComparedKernels(t *testing.T) {
+	t.Parallel()
+
+	context := report.MigrationContext{
+		RunningRelease: "6.9.12-gentoo", RunningConfig: "/proc/config.gz",
+		TargetRelease: "6.10.2-gentoo", TargetTree: "/usr/src/linux-6.10.2-gentoo",
+	}
+	var text bytes.Buffer
+	if err := report.MigrationTextWithContext(
+		&text, context, nil, terminal.Style{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "Running kernel: 6.9.12-gentoo") ||
+		!strings.Contains(text.String(), "Target kernel: 6.10.2-gentoo") {
+		t.Fatalf("migration text:\n%s", text.String())
+	}
+	var document bytes.Buffer
+	if err := report.MigrationJSONWithContext(&document, context, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(document.String(), `"schema": "maize.migration/v2"`) ||
+		!strings.Contains(document.String(), `"target_release": "6.10.2-gentoo"`) {
+		t.Fatalf("migration JSON:\n%s", document.String())
 	}
 }
