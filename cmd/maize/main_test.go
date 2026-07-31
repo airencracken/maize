@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/airencracken/maize/internal/domain"
+	maizegentoo "github.com/airencracken/maize/internal/gentooling"
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/recommend"
 )
@@ -178,6 +179,30 @@ func TestExperimentalBestGuessSwitchRejectsValuesAndDuplicates(t *testing.T) {
 	}
 }
 
+func TestOperatorPolicyReasonsTranslateAndSuppressDeveloperDiagnostics(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ reason, expected string }{
+		{"linux-info.eclass check dispatch requires runtime phase evaluation", "Gentoo kernel compatibility checks"},
+		{"CONFIG_CHECK is guarded by unsupported shell control flow", "depend on ebuild conditions"},
+		{"CONFIG_CHECK expression requires shell evaluation", "constructs its required kernel-option list dynamically"},
+		{"CONFIG_CHECK token is not a static Kconfig symbol", "computes one or more kernel-option names"},
+		{"new parser limitation", "could not determine every kernel option"},
+	}
+	for _, test := range tests {
+		got := strings.Join(operatorPolicyReasons([]maizegentoo.DynamicKernelPolicy{{Reason: test.reason}}), " ")
+		if !strings.Contains(got, test.expected) || strings.Contains(got, "CONFIG_CHECK") || strings.Contains(got, "eclass") {
+			t.Errorf("reason %q translated to %q", test.reason, got)
+		}
+	}
+	combined := operatorPolicyReasons([]maizegentoo.DynamicKernelPolicy{
+		{Reason: "linux-info.eclass check dispatch requires runtime phase evaluation"},
+		{Reason: "CONFIG_CHECK is guarded by unsupported shell control flow"},
+	})
+	if len(combined) != 1 || !strings.Contains(combined[0], "ebuild conditions") {
+		t.Fatalf("redundant dispatch was not suppressed: %v", combined)
+	}
+}
+
 func TestInspectCommandRunsEndToEndAgainstAlternateRoot(t *testing.T) {
 	t.Parallel()
 
@@ -340,9 +365,11 @@ func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testin
 		"--kernel-tree", kernelTree,
 	}, &stdout, &stderr)
 	if code != 1 ||
-		!strings.Contains(stderr.String(), "dynamic package kernel policies across") ||
+		!strings.Contains(stderr.String(), "kernel requirements are not fully understood") ||
 		!strings.Contains(stderr.String(), "app-containers/docker-28.3.2") ||
-		!strings.Contains(stderr.String(), "shell") {
+		!strings.Contains(stderr.String(), "constructs its required kernel-option list dynamically") ||
+		strings.Contains(stderr.String(), "unsupported shell control flow") ||
+		!strings.Contains(stderr.String(), "No configuration was written") {
 		t.Fatalf("generate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {
@@ -355,7 +382,9 @@ func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testin
 		"--repository", "gentoo=" + repository, "--kernel-tree", kernelTree, "--verbose",
 	}, &stdout, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "${RUNTIME_SYMBOL}") ||
-		!strings.Contains(stderr.String(), "docker-28.3.2.ebuild") {
+		!strings.Contains(stderr.String(), "docker-28.3.2.ebuild") ||
+		!strings.Contains(stderr.String(), "developer evidence:") ||
+		!strings.Contains(stderr.String(), "dynamic shell expression") {
 		t.Fatalf("verbose generate exit %d, stderr %q", code, stderr.String())
 	}
 }

@@ -708,25 +708,18 @@ func writeDynamicPolicyFailure(writer io.Writer, policies []maizegentoo.DynamicK
 		groups = append(groups, packagePolicies{name: name, policies: findings})
 	}
 	sort.Slice(groups, func(left, right int) bool { return groups[left].name < groups[right].name })
-	fmt.Fprintf(writer, "generate: %d dynamic package kernel policies across %d packages require operator review:\n", len(policies), len(groups))
+	fmt.Fprintf(writer, "generate stopped: kernel requirements are not fully understood for %d installed package(s).\n", len(groups))
+	fmt.Fprintln(writer, "Why this matters: removing an unknown kernel option could make one of these packages fail the next time it is rebuilt.")
+	fmt.Fprintln(writer, "Affected packages:")
 	limit := len(groups)
 	if !verbose && limit > 12 {
 		limit = 12
 	}
 	for _, group := range groups[:limit] {
-		reasons := make(map[string]bool)
-		for _, policy := range group.policies {
-			reasons[policy.Reason] = true
-		}
-		orderedReasons := make([]string, 0, len(reasons))
-		for reason := range reasons {
-			orderedReasons = append(orderedReasons, reason)
-		}
-		sort.Strings(orderedReasons)
-		fmt.Fprintf(writer, "  %s: %d unresolved finding(s): %s\n", group.name, len(group.policies), strings.Join(orderedReasons, "; "))
+		fmt.Fprintf(writer, "  %s: %s\n", group.name, strings.Join(operatorPolicyReasons(group.policies), " "))
 		if verbose {
 			for _, policy := range group.policies {
-				fmt.Fprintf(writer, "    %s", policy.Expression)
+				fmt.Fprintf(writer, "    developer evidence: %s; %s", policy.Expression, policy.Reason)
 				if policy.Provenance.Source != "" {
 					fmt.Fprintf(writer, " (%s", policy.Provenance.Source)
 					if policy.Provenance.Detail != "" {
@@ -741,7 +734,46 @@ func writeDynamicPolicyFailure(writer io.Writer, policies []maizegentoo.DynamicK
 	if limit < len(groups) {
 		fmt.Fprintf(writer, "  ... %d more package(s); rerun with --verbose for the complete list\n", len(groups)-limit)
 	}
-	fmt.Fprintln(writer, "Maize will not guess past shell-dependent package policy; these findings need Gentooling support or operator review.")
+	if !verbose {
+		fmt.Fprintln(writer, "Run this command again with --verbose to show the ebuild expressions and source locations behind these summaries.")
+	}
+	fmt.Fprintln(writer, "No configuration was written. These package-policy gaps need Gentooling support before Maize can generate safely.")
+}
+
+func operatorPolicyReasons(policies []maizegentoo.DynamicKernelPolicy) []string {
+	conditional, constructed, computed, dispatch, unknown := false, false, false, false, false
+	for _, policy := range policies {
+		reason := strings.ToLower(policy.Reason)
+		switch {
+		case strings.Contains(reason, "guarded") || strings.Contains(reason, "control flow"):
+			conditional = true
+		case strings.Contains(reason, "shell evaluation") || strings.Contains(reason, "dynamic shell expression"):
+			constructed = true
+		case strings.Contains(reason, "not a static kconfig symbol"):
+			computed = true
+		case strings.Contains(reason, "runtime phase evaluation") || strings.Contains(reason, "check dispatch"):
+			dispatch = true
+		default:
+			unknown = true
+		}
+	}
+	var result []string
+	if conditional {
+		result = append(result, "Some required kernel options depend on ebuild conditions that Maize cannot evaluate yet.")
+	}
+	if constructed {
+		result = append(result, "The ebuild constructs its required kernel-option list dynamically, so the exact options are unknown.")
+	}
+	if computed {
+		result = append(result, "The ebuild computes one or more kernel-option names, so the exact options are unknown.")
+	}
+	if unknown {
+		result = append(result, "Maize could not determine every kernel option this package requires.")
+	}
+	if dispatch && len(result) == 0 {
+		result = append(result, "This package uses Gentoo kernel compatibility checks, but Maize cannot yet determine whether they run or which options they require.")
+	}
+	return result
 }
 
 func writeGenerateHelp(writer io.Writer) {
