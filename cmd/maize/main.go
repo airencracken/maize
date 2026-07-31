@@ -179,6 +179,14 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	if code != 0 {
 		return code
 	}
+	if len(inspection.DynamicKernelPolicy) != 0 {
+		fmt.Fprintf(
+			stderr,
+			"generate: %d dynamic package kernel policies require operator review\n",
+			len(inspection.DynamicKernelPolicy),
+		)
+		return 1
+	}
 	candidate, err := app.CandidateConfig(inspection)
 	if err != nil {
 		fmt.Fprintf(stderr, "generate: %v\n", err)

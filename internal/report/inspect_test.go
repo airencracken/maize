@@ -38,6 +38,8 @@ func TestInspectionJSONEmitsVersionedDeterministicContract(t *testing.T) {
 		Hardware            json.RawMessage `json:"hardware"`
 		SnapshotConsistency string          `json:"snapshot_consistency"`
 		Repositories        []any           `json:"repositories"`
+		CandidateIssues     int             `json:"candidate_issues"`
+		DynamicKernelPolicy []any           `json:"dynamic_kernel_policy"`
 		InstalledCount      int             `json:"installed_count"`
 		WorldSelections     []any           `json:"world_selections"`
 		SystemSelections    []any           `json:"system_selections"`

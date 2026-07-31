@@ -3,6 +3,7 @@ package gentooling
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	shared "github.com/airencracken/gentooling"
 	"github.com/airencracken/maize/internal/domain"
@@ -43,11 +44,14 @@ type RepositoryEvidence struct {
 }
 
 type SystemSnapshotEvidence struct {
-	Installed    shared.InstalledInventory
-	Config       EffectiveConfigEvidence
-	Repositories []RepositoryEvidence
-	Selections   SelectionsEvidence
-	Consistency  SnapshotConsistency
+	Installed           shared.InstalledInventory
+	Config              EffectiveConfigEvidence
+	Repositories        []RepositoryEvidence
+	Selections          SelectionsEvidence
+	Consistency         SnapshotConsistency
+	KernelPolicy        []PackageKernelRequirement
+	DynamicKernelPolicy []DynamicKernelPolicy
+	CandidateIssues     int
 }
 
 // ReadSystemSnapshot obtains one mutually consistent view of installed
@@ -83,17 +87,50 @@ func ReadSystemSnapshotWithConsistency(
 		Config: shared.ConfigOptions{
 			Environment: append([]string(nil), environment...),
 		},
-		Attempts: attempts, Consistency: sharedConsistency,
+		Candidates:        shared.CandidateOptions{Integrity: shared.AllowPartial},
+		IncludeCandidates: true,
+		Attempts:          attempts, Consistency: sharedConsistency,
 	})
 	if err != nil {
 		return SystemSnapshotEvidence{}, err
 	}
-	return SystemSnapshotEvidence{
+	result := SystemSnapshotEvidence{
 		Installed: snapshot.Installed, Config: configEvidence(snapshot.Config),
-		Repositories: repositoriesEvidence(snapshot.Repositories),
-		Selections:   selectionsEvidence(snapshot.Selections),
-		Consistency:  consistencyEvidence(snapshot.Consistency),
-	}, nil
+		Repositories:    repositoriesEvidence(snapshot.Repositories),
+		Selections:      selectionsEvidence(snapshot.Selections),
+		Consistency:     consistencyEvidence(snapshot.Consistency),
+		CandidateIssues: len(snapshot.Candidates.Issues),
+	}
+	for _, installed := range snapshot.Installed.Packages {
+		candidate, found := matchingCandidate(snapshot.Candidates.Candidates, installed)
+		if !found || !slices.Contains(candidate.Inherited, "linux-info") {
+			continue
+		}
+		policy, policyErr := ReadPackageKernelPolicy(
+			ctx, candidate, snapshot.Repositories, installed.EnabledUse, false,
+		)
+		if policyErr != nil {
+			return SystemSnapshotEvidence{}, policyErr
+		}
+		result.KernelPolicy = append(result.KernelPolicy, policy.Requirements...)
+		result.DynamicKernelPolicy = append(result.DynamicKernelPolicy, policy.Dynamic...)
+	}
+	return result, nil
+}
+
+func matchingCandidate(
+	candidates []shared.RepositoryCandidate,
+	installed shared.InstalledPackage,
+) (shared.RepositoryCandidate, bool) {
+	for _, candidate := range candidates {
+		if candidate.ID.Category == installed.ID.Category &&
+			candidate.ID.Name == installed.ID.Name &&
+			candidate.ID.Version == installed.ID.Version &&
+			candidate.ID.Repository == installed.ID.Repository {
+			return candidate, true
+		}
+	}
+	return shared.RepositoryCandidate{}, false
 }
 
 func sharedSnapshotConsistency(value SnapshotConsistency) (shared.SnapshotConsistency, error) {

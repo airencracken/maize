@@ -17,10 +17,20 @@ type inspectJSON struct {
 	Hardware            hardwareJSON         `json:"hardware"`
 	SnapshotConsistency string               `json:"snapshot_consistency"`
 	Repositories        []repositoryJSON     `json:"repositories"`
+	CandidateIssues     int                  `json:"candidate_issues"`
+	DynamicKernelPolicy []dynamicPolicyJSON  `json:"dynamic_kernel_policy"`
 	InstalledCount      int                  `json:"installed_count"`
 	WorldSelections     []selectionJSON      `json:"world_selections"`
 	SystemSelections    []selectionJSON      `json:"system_selections"`
 	Recommendations     []recommendationJSON `json:"recommendations"`
+}
+
+type dynamicPolicyJSON struct {
+	Package    string `json:"package"`
+	Expression string `json:"expression"`
+	Reason     string `json:"reason"`
+	Source     string `json:"source"`
+	Detail     string `json:"detail"`
 }
 
 type repositoryJSON struct {
@@ -93,13 +103,22 @@ type evidenceJSON struct {
 
 func InspectionText(writer io.Writer, inspection app.Inspection) error {
 	if _, err := fmt.Fprintf(
-		writer, "Maize inspection\nKernel config: %s (%s)\nHardware devices: %d\nSnapshot consistency: %s\nRepositories: %d\nInstalled packages: %d\nWorld selections: %d\nSystem selections: %d\nKernel recommendations: %d\n",
+		writer, "Maize inspection\nKernel config: %s (%s)\nHardware devices: %d\nSnapshot consistency: %s\nRepositories: %d\nCandidate issues: %d\nDynamic kernel policies: %d\nInstalled packages: %d\nWorld selections: %d\nSystem selections: %d\nKernel recommendations: %d\n",
 		inspection.ConfigSource.Path, inspection.ConfigSource.Origin,
 		len(inspection.Hardware.Devices), inspection.SnapshotConsistency,
-		len(inspection.Repositories), inspection.InstalledCount, len(inspection.WorldSelections),
+		len(inspection.Repositories), inspection.CandidateIssues,
+		len(inspection.DynamicKernelPolicy), inspection.InstalledCount, len(inspection.WorldSelections),
 		len(inspection.SystemSelections), len(inspection.Recommendations),
 	); err != nil {
 		return err
+	}
+	for _, dynamic := range inspection.DynamicKernelPolicy {
+		if _, err := fmt.Fprintf(
+			writer, "warning: dynamic kernel policy for %s: %s (%s)\n",
+			dynamic.Package.CPV(), dynamic.Expression, dynamic.Reason,
+		); err != nil {
+			return err
+		}
 	}
 	for _, item := range inspection.Recommendations {
 		current := "missing"
@@ -136,9 +155,20 @@ func InspectionJSON(writer io.Writer, inspection app.Inspection) error {
 		Hardware:            hardwareDocument(inspection.Hardware),
 		SnapshotConsistency: string(inspection.SnapshotConsistency),
 		Repositories:        make([]repositoryJSON, 0, len(inspection.Repositories)),
-		WorldSelections:     make([]selectionJSON, 0, len(inspection.WorldSelections)),
-		SystemSelections:    make([]selectionJSON, 0, len(inspection.SystemSelections)),
-		Recommendations:     make([]recommendationJSON, 0, len(inspection.Recommendations)),
+		CandidateIssues:     inspection.CandidateIssues,
+		DynamicKernelPolicy: make(
+			[]dynamicPolicyJSON, 0, len(inspection.DynamicKernelPolicy),
+		),
+		WorldSelections:  make([]selectionJSON, 0, len(inspection.WorldSelections)),
+		SystemSelections: make([]selectionJSON, 0, len(inspection.SystemSelections)),
+		Recommendations:  make([]recommendationJSON, 0, len(inspection.Recommendations)),
+	}
+	for _, dynamic := range inspection.DynamicKernelPolicy {
+		document.DynamicKernelPolicy = append(document.DynamicKernelPolicy, dynamicPolicyJSON{
+			Package: dynamic.Package.CPV(), Expression: dynamic.Expression,
+			Reason: dynamic.Reason, Source: dynamic.Provenance.Source,
+			Detail: dynamic.Provenance.Detail,
+		})
 	}
 	for _, repository := range inspection.Repositories {
 		document.Repositories = append(document.Repositories, repositoryJSON{

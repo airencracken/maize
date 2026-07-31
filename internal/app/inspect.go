@@ -23,6 +23,8 @@ type Inspection struct {
 	Hardware            hardware.Inventory
 	Repositories        []maizegentoo.RepositoryEvidence
 	SnapshotConsistency maizegentoo.SnapshotConsistency
+	DynamicKernelPolicy []maizegentoo.DynamicKernelPolicy
+	CandidateIssues     int
 	InstalledCount      int
 	WorldSelections     []maizegentoo.SelectionEvidence
 	SystemSelections    []maizegentoo.SelectionEvidence
@@ -101,11 +103,18 @@ func inspectWithInputs(
 	if err != nil {
 		return Inspection{}, err
 	}
+	packagePolicy, err := recommend.PackageKernelPolicy(config, snapshot.KernelPolicy)
+	if err != nil {
+		return Inspection{}, err
+	}
+	recommendations = append(recommendations, packagePolicy...)
 	return Inspection{
 		Schema: InspectSchema, ConfigSource: configSource, Hardware: inventory,
 		CurrentConfig:       config,
 		Repositories:        append([]maizegentoo.RepositoryEvidence(nil), snapshot.Repositories...),
 		SnapshotConsistency: snapshot.Consistency,
+		DynamicKernelPolicy: append([]maizegentoo.DynamicKernelPolicy(nil), snapshot.DynamicKernelPolicy...),
+		CandidateIssues:     snapshot.CandidateIssues,
 		InstalledCount:      len(snapshot.Installed.Packages),
 		WorldSelections:     append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.World...),
 		SystemSelections:    append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.System...),

@@ -192,3 +192,32 @@ func TestReadProspectivePackageRejectsSymlinkedVisibilityPolicy(t *testing.T) {
 		t.Fatalf("symlink error returned partial evidence: %#v", evidence)
 	}
 }
+
+func TestReadSnapshotProspectivePackageUsesCapturedCandidateEvidence(t *testing.T) {
+	t.Parallel()
+
+	paths := systemSnapshotFixture(t)
+	repository := paths.Repositories[0].Path
+	metadata := filepath.Join(
+		repository, "metadata", "md5-cache", "app-misc", "future-2",
+	)
+	writeFile(t, filepath.Dir(metadata), filepath.Base(metadata),
+		"EAPI=8\nSLOT=0\nKEYWORDS=amd64\nIUSE=+modules\n"+
+			"INHERITED=linux-info\nREQUIRED_USE=modules\n")
+
+	evidence, err := maizegentoo.ReadSnapshotProspectivePackage(
+		context.Background(), paths, nil, shared.PackageID{
+			Category: "app-misc", Name: "future", Version: "2", Repository: "gentoo",
+		}, maizegentoo.SnapshotStabilized,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Consistency != maizegentoo.SnapshotStabilized ||
+		evidence.Candidate.Package.CPV() != "app-misc/future-2" ||
+		evidence.Candidate.RequiredUse != "modules" ||
+		!evidence.Visibility.Visible || !evidence.Visibility.Stable ||
+		len(evidence.Use.Decisions) != 1 || !evidence.Use.Decisions[0].Enabled {
+		t.Fatalf("prospective snapshot = %#v", evidence)
+	}
+}

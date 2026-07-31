@@ -159,6 +159,40 @@ func TestGenerateCheckImpactAndObserveRunAgainstAlternateRoot(t *testing.T) {
 	}
 }
 
+func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testing.T) {
+	t.Parallel()
+
+	root := commandFixture(t)
+	repository := filepath.Join(root, "var", "db", "repos", "gentoo")
+	commandWrite(t,
+		filepath.Join(repository, "metadata", "md5-cache", "app-containers", "docker-28.3.2"),
+		"EAPI=8\nSLOT=0\nIUSE=seccomp apparmor\n_eclasses_=linux-info digest\n",
+	)
+	commandWrite(t,
+		filepath.Join(repository, "app-containers", "docker", "docker-28.3.2.ebuild"),
+		"CONFIG_CHECK=\"${RUNTIME_SYMBOL}\"\npkg_setup() { check_extra_config; }\n",
+	)
+	config := filepath.Join(root, "kernel.config")
+	commandWrite(t, config,
+		"CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\n"+
+			"CONFIG_SECCOMP_FILTER=y\n")
+	output := filepath.Join(root, "must-not-exist.config")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"generate", "--root", root, "--config", config, "--output", output,
+		"--repository", "gentoo=" + repository,
+	}, &stdout, &stderr)
+	if code != 1 ||
+		!strings.Contains(stderr.String(), "dynamic package kernel policies require operator review") {
+		t.Fatalf("generate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("output must not be created, stat error = %v", err)
+	}
+}
+
 func TestMigrateCommandReportsSemanticChanges(t *testing.T) {
 	t.Parallel()
 

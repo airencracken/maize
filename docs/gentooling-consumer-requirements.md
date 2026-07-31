@@ -461,6 +461,50 @@ candidate rendering, and atomic output remain Maize responsibilities. Arise
 does not currently consume equivalent host evidence, so promoting those pieces
 would be premature.
 
+## Gentooling v0.8.0 through v0.9.0 update
+
+Gentooling `v0.8.x` and `v0.9.0` resolve every package-side target identified
+by the first Maize command suite:
+
+- Canonical multiline and ordered Portage configuration assignments.
+- Bounded repository candidate discovery from evaluated metadata caches.
+- Candidate REQUIRED_USE and inherited-eclass metadata.
+- Conservative structured Kconfig requirements from ebuilds/eclasses,
+  including disabled symbols, severity, USE conditions, invocations, source
+  provenance, and explicit dynamic evidence.
+- Installed out-of-tree module classification and explicit target-kernel
+  rebuild state.
+- Snapshot-bound candidate visibility and USE evaluation.
+
+Maize consumes these APIs without executing package shell code. Active static
+requirements now become direct symbol recommendations. Dynamic policy is
+retained for operator review, and candidate generation refuses to proceed when
+dynamic package kernel policy remains unresolved. Candidate-cache integrity
+issues are counted rather than silently discarded.
+
+Arise also consumes `v0.9.0` for repository candidates, kernel requirement
+contracts, prospective evaluation, and module-rebuild set expansion. This
+confirms those extractions have two real consumers.
+
+Remaining concrete feedback:
+
+1. Needed soon: distinguish dispatch-level `linux-info.eclass` uncertainty
+   from a genuinely unresolved symbol expression. The live host produced 60
+   dynamic records, many solely because static requirements eventually dispatch
+   through `check_extra_config`. Treating every dispatch marker as incomplete
+   blocks generation even when all symbol expressions were captured.
+2. Likely soon: a structured way to associate genuinely dynamic kernel checks with a
+   safely captured package-phase evaluation result, without asking Maize to
+   execute ebuild shell.
+3. Likely soon: richer REQUIRED_USE evaluation if prospective generation must
+   explain invalid USE combinations rather than merely retain the expression.
+
+The complete candidate snapshot took roughly two seconds on the first live
+host (six repositories and 1,264 installed packages), so a targeted query API
+is not currently justified by measured performance. The live run completed
+with 39 static Kconfig recommendations and two candidate-cache integrity
+issues.
+
 ## Needed now
 
 ### 1. Installed package inventory

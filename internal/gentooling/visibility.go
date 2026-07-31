@@ -48,6 +48,23 @@ type ProspectivePackageEvidence struct {
 	Use        PackageUseEvidence
 }
 
+type RepositoryCandidateEvidence struct {
+	Package      shared.PackageID
+	EAPI         string
+	Keywords     []string
+	DeclaredUse  []shared.UseDeclaration
+	Inherited    []string
+	RequiredUse  string
+	MetadataPath string
+}
+
+type SnapshotProspectiveEvidence struct {
+	Candidate   RepositoryCandidateEvidence
+	Visibility  PackageVisibilityEvidence
+	Use         PackageUseEvidence
+	Consistency SnapshotConsistency
+}
+
 // ReadProspectivePackage evaluates visibility and USE policy from the same
 // effective configuration. Visibility determines whether stable-only USE
 // policy applies; callers do not supply or infer stability.
@@ -81,6 +98,54 @@ func ReadProspectivePackage(
 	return ProspectivePackageEvidence{
 		Visibility: packageVisibilityEvidence(visibility),
 		Use:        packageUseEvidence(use, visibility.Stable),
+	}, nil
+}
+
+// ReadSnapshotProspectivePackage discovers candidates and evaluates one exact
+// candidate solely from a stabilized snapshot.
+func ReadSnapshotProspectivePackage(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	id shared.PackageID,
+	consistency SnapshotConsistency,
+) (SnapshotProspectiveEvidence, error) {
+	sharedConsistency, err := sharedSnapshotConsistency(consistency)
+	if err != nil {
+		return SnapshotProspectiveEvidence{}, err
+	}
+	snapshot, err := shared.ReadSystemSnapshot(ctx, paths, shared.SnapshotOptions{
+		Installed: shared.InstalledOptions{
+			Integrity: shared.RequireComplete,
+		},
+		Config: shared.ConfigOptions{
+			Environment: append([]string(nil), environment...),
+		},
+		Candidates: shared.CandidateOptions{
+			Integrity: shared.RequireComplete,
+		},
+		IncludeCandidates: true,
+		Consistency:       sharedConsistency,
+	})
+	if err != nil {
+		return SnapshotProspectiveEvidence{}, err
+	}
+	evaluation, err := snapshot.EvaluateCandidate(ctx, id)
+	if err != nil {
+		return SnapshotProspectiveEvidence{}, err
+	}
+	return SnapshotProspectiveEvidence{
+		Candidate: RepositoryCandidateEvidence{
+			Package: evaluation.Candidate.ID, EAPI: evaluation.Candidate.EAPI,
+			Keywords:     append([]string(nil), evaluation.Candidate.Keywords...),
+			DeclaredUse:  append([]shared.UseDeclaration(nil), evaluation.Candidate.DeclaredUse...),
+			Inherited:    append([]string(nil), evaluation.Candidate.Inherited...),
+			RequiredUse:  evaluation.Candidate.RequiredUse,
+			MetadataPath: evaluation.Candidate.MetadataPath,
+		},
+		Visibility:  packageVisibilityEvidence(evaluation.Visibility),
+		Use:         packageUseEvidence(evaluation.Use, evaluation.Visibility.Stable),
+		Consistency: consistencyEvidence(snapshot.Consistency),
 	}, nil
 }
 

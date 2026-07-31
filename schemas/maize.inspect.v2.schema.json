@@ -26,6 +26,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/repository"}
     },
+    "candidate_issues": {"type": "integer", "minimum": 0},
+    "dynamic_kernel_policy": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dynamic_kernel_policy"}
+    },
     "installed_count": {"type": "integer", "minimum": 0},
     "world_selections": {
       "type": "array",
@@ -41,6 +46,18 @@
     }
   },
   "$defs": {
+    "dynamic_kernel_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "expression", "reason", "source", "detail"],
+      "properties": {
+        "package": {"type": "string", "minLength": 1},
+        "expression": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
     "repository": {
       "type": "object",
       "additionalProperties": false,
