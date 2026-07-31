@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	maizegentoo "github.com/airencracken/maize/internal/gentooling"
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
+	"github.com/airencracken/maize/internal/recommend"
 	"github.com/airencracken/maize/internal/report"
 	"github.com/airencracken/maize/internal/terminal"
 )
@@ -446,24 +449,61 @@ func runDefaultMigrate(
 		fmt.Fprintf(stderr, "migrate target validation: %v\n", err)
 		return 1
 	}
-	emptyCatalog, err := kernel.NewCatalog()
+	oldCatalog, err := kernel.NewCatalog()
 	if err != nil {
 		fmt.Fprintf(stderr, "migrate: initialize Kconfig catalog: %v\n", err)
 		return 1
 	}
-	changes := kernel.Compare(emptyCatalog, emptyCatalog, running, validated.Config)
+	for _, tree := range inventory.Trees {
+		if !tree.RunningRelease {
+			continue
+		}
+		oldCatalog, err = kernel.LoadKconfigCatalog(ctx, tree.Path)
+		if err != nil {
+			fmt.Fprintf(stderr, "migrate running Kconfig catalog: %v\n", err)
+			return 1
+		}
+		break
+	}
+	targetCatalog, err := kernel.LoadKconfigCatalog(ctx, inventory.Target.Path)
+	if err != nil {
+		fmt.Fprintf(stderr, "migrate target Kconfig catalog: %v\n", err)
+		return 1
+	}
+	changes := kernel.ConfigRelevantChanges(
+		kernel.Compare(oldCatalog, targetCatalog, running, validated.Config),
+	)
+	reasons := make(map[kernel.Symbol][]string)
+	evidenceComplete := false
+	evidenceStatus := "unavailable"
+	inspection, inspectErr := app.InspectSystem(
+		ctx, shared.DefaultSystemPaths(root), nil, paths,
+		hardware.DefaultSystemPaths(root), time.Time{}, maizegentoo.SnapshotStabilized,
+	)
+	if inspectErr != nil {
+		evidenceStatus = "unavailable: " + inspectErr.Error()
+	} else {
+		reasons = migrationRecommendationReasons(inspection.Recommendations)
+		evidenceComplete = true
+		evidenceStatus = fmt.Sprintf(
+			"evaluated from %d current kernel recommendations", len(inspection.Recommendations),
+		)
+	}
+	changes = migrationConsumerRelevantChanges(changes, reasons)
 	reportContext := report.MigrationContext{
-		RunningRelease: source.RunningRelease,
-		RunningConfig:  source.Path,
-		TargetRelease:  inventory.Target.Release,
-		TargetTree:     inventory.Target.Path,
+		RunningRelease:   source.RunningRelease,
+		RunningConfig:    source.Path,
+		TargetRelease:    inventory.Target.Release,
+		TargetTree:       inventory.Target.Path,
+		ConsumerEvidence: evidenceStatus,
 	}
 	if format == "json" {
-		err = report.MigrationJSONPrioritized(stdout, reportContext, changes)
+		err = report.MigrationJSONExplained(stdout, reportContext, changes, reasons)
 	} else {
 		err = report.MigrationTextWithContextOptions(
 			stdout, reportContext, changes, report.MigrationTextOptions{
 				Style: terminal.StyleForWriter(mode, stdout), Verbose: verbose,
+				Reasons: reasons, EvidenceComplete: evidenceComplete,
 			},
 		)
 	}
@@ -472,6 +512,55 @@ func runDefaultMigrate(
 		return 1
 	}
 	return 0
+}
+
+func migrationConsumerRelevantChanges(
+	changes []kernel.Change,
+	reasons map[kernel.Symbol][]string,
+) []kernel.Change {
+	result := make([]kernel.Change, 0, len(changes))
+	for _, change := range changes {
+		valueChanged := false
+		for _, kind := range change.Kinds {
+			if kind == kernel.ChangeValue {
+				valueChanged = true
+				break
+			}
+		}
+		if valueChanged || len(reasons[change.Symbol]) != 0 {
+			result = append(result, change)
+		}
+	}
+	return result
+}
+
+func migrationRecommendationReasons(
+	recommendations []recommend.Recommendation,
+) map[kernel.Symbol][]string {
+	result := make(map[kernel.Symbol][]string)
+	for _, recommendation := range recommendations {
+		values := []string{recommendation.Detail}
+		for _, evidence := range recommendation.Evidence {
+			if evidence.Detail == recommendation.Detail {
+				continue
+			}
+			detail := evidence.Detail
+			if evidence.Source != "" {
+				detail += " [" + evidence.Source + "]"
+			}
+			values = append(values, detail)
+		}
+		for _, value := range values {
+			if value == "" || slices.Contains(result[recommendation.Symbol], value) {
+				continue
+			}
+			result[recommendation.Symbol] = append(result[recommendation.Symbol], value)
+		}
+	}
+	for symbol := range result {
+		sort.Strings(result[symbol])
+	}
+	return result
 }
 
 func readKconfig(path string) (kernel.Catalog, error) {

@@ -51,6 +51,14 @@ func NewCatalog(definitions ...Definition) (Catalog, error) {
 }
 
 func ParseKconfig(path string, reader io.Reader) (Catalog, error) {
+	definitions, err := parseKconfigDefinitions(path, reader)
+	if err != nil {
+		return Catalog{}, err
+	}
+	return NewCatalog(definitions...)
+}
+
+func parseKconfigDefinitions(path string, reader io.Reader) ([]Definition, error) {
 	var definitions []Definition
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -98,10 +106,13 @@ func ParseKconfig(path string, reader io.Reader) (Catalog, error) {
 			flushDefinition()
 			symbol, err := ParseSymbol(fields[1])
 			if err != nil {
-				return Catalog{}, fmt.Errorf("%s:%d: %w", path, lineNumber, err)
+				return nil, fmt.Errorf("%s:%d: %w", path, lineNumber, err)
 			}
 			current = &Definition{Symbol: symbol, Location: Location{Path: path, Line: lineNumber}}
 			continue
+		}
+		if current != nil && indent == 0 && len(fields) != 0 {
+			flushDefinition()
 		}
 		if current == nil || len(fields) == 0 {
 			continue
@@ -129,10 +140,10 @@ func ParseKconfig(path string, reader io.Reader) (Catalog, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return Catalog{}, fmt.Errorf("%s: read Kconfig: %w", path, err)
+		return nil, fmt.Errorf("%s: read Kconfig: %w", path, err)
 	}
 	flushDefinition()
-	return NewCatalog(definitions...)
+	return definitions, nil
 }
 
 func quotedArgument(value string) string {

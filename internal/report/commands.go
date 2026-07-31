@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
@@ -11,10 +13,11 @@ import (
 )
 
 type MigrationContext struct {
-	RunningRelease string `json:"running_release"`
-	RunningConfig  string `json:"running_config"`
-	TargetRelease  string `json:"target_release"`
-	TargetTree     string `json:"target_tree"`
+	RunningRelease   string `json:"running_release"`
+	RunningConfig    string `json:"running_config"`
+	TargetRelease    string `json:"target_release"`
+	TargetTree       string `json:"target_tree"`
+	ConsumerEvidence string `json:"consumer_evidence,omitempty"`
 }
 
 func HardwareJSON(writer io.Writer, inventory hardware.Inventory) error {
@@ -34,8 +37,10 @@ func MigrationText(writer io.Writer, changes []kernel.Change) error {
 }
 
 type MigrationTextOptions struct {
-	Style   terminal.Style
-	Verbose bool
+	Style            terminal.Style
+	Verbose          bool
+	Reasons          map[kernel.Symbol][]string
+	EvidenceComplete bool
 }
 
 const defaultMigrationGroupLimit = 12
@@ -68,6 +73,14 @@ func MigrationTextWithContextOptions(
 	); err != nil {
 		return err
 	}
+	if context.ConsumerEvidence != "" {
+		if _, err := fmt.Fprintf(
+			writer, "%s %s\n",
+			style.Bold("Consumer evidence:"), context.ConsumerEvidence,
+		); err != nil {
+			return err
+		}
+	}
 	return MigrationTextWithOptions(writer, changes, options)
 }
 
@@ -88,6 +101,7 @@ func MigrationTextWithOptions(
 ) error {
 	style := options.Style
 	summary := kernel.SummarizeMigration(changes)
+	orderedChanges := migrationChangesByConsumer(changes, options.Reasons)
 	inactiveLabel := "inactive churn hidden:"
 	if options.Verbose {
 		inactiveLabel = "inactive churn:"
@@ -119,7 +133,7 @@ func MigrationTextWithOptions(
 		if options.Verbose {
 			limit = count
 		}
-		for _, change := range changes {
+		for _, change := range orderedChanges {
 			if kernel.ClassifyMigrationChange(change) != impact {
 				continue
 			}
@@ -133,6 +147,42 @@ func MigrationTextWithOptions(
 				migrationImpactExplanation(impact, change),
 			); err != nil {
 				return err
+			}
+			if change.Purpose != "" {
+				if _, err := fmt.Fprintf(writer, "    %s %s\n", style.Bold("Purpose:"), change.Purpose); err != nil {
+					return err
+				}
+			}
+			reasons := options.Reasons[change.Symbol]
+			for _, reason := range reasons {
+				if _, err := fmt.Fprintf(
+					writer, "    %s %s\n", style.Bold("Current-system reason:"), reason,
+				); err != nil {
+					return err
+				}
+			}
+			if len(reasons) == 0 && options.EvidenceComplete &&
+				(impact == kernel.ImpactLostCapability || impact == kernel.ImpactBuiltinToModule) {
+				if _, err := fmt.Fprintln(
+					writer, "    No current package or hardware requirement is known to Maize.",
+				); err != nil {
+					return err
+				}
+			}
+			if options.Verbose {
+				if help := compactMigrationHelp(change.Help); help != "" && help != change.Purpose {
+					if _, err := fmt.Fprintf(writer, "    %s %s\n", style.Bold("Kconfig help:"), help); err != nil {
+						return err
+					}
+				}
+				for _, provenance := range change.Explanation.Provenance {
+					if _, err := fmt.Fprintf(
+						writer, "    %s %s (%s)\n",
+						style.Bold("Kconfig source:"), provenance.Source, provenance.Detail,
+					); err != nil {
+						return err
+					}
+				}
 			}
 			written++
 		}
@@ -150,6 +200,31 @@ func MigrationTextWithOptions(
 		return err
 	}
 	return nil
+}
+
+func migrationChangesByConsumer(
+	changes []kernel.Change,
+	reasons map[kernel.Symbol][]string,
+) []kernel.Change {
+	result := append([]kernel.Change(nil), changes...)
+	sort.SliceStable(result, func(left, right int) bool {
+		leftKnown := len(reasons[result[left].Symbol]) != 0
+		rightKnown := len(reasons[result[right].Symbol]) != 0
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+		return result[left].Symbol < result[right].Symbol
+	})
+	return result
+}
+
+func compactMigrationHelp(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	const limit = 500
+	if len(value) > limit {
+		return value[:limit] + "..."
+	}
+	return value
 }
 
 func migrationImpactOrder(verbose bool) []kernel.MigrationImpact {
@@ -246,7 +321,7 @@ func migrationSymbolStyle(style terminal.Style, impact kernel.MigrationImpact, s
 }
 
 func MigrationJSON(writer io.Writer, changes []kernel.Change) error {
-	return migrationJSON(writer, "maize.migration/v1", nil, changes, false)
+	return migrationJSON(writer, "maize.migration/v1", nil, changes, false, nil, false)
 }
 
 func MigrationJSONWithContext(
@@ -254,7 +329,7 @@ func MigrationJSONWithContext(
 	context MigrationContext,
 	changes []kernel.Change,
 ) error {
-	return migrationJSON(writer, "maize.migration/v2", &context, changes, false)
+	return migrationJSON(writer, "maize.migration/v2", &context, changes, false, nil, false)
 }
 
 func MigrationJSONPrioritized(
@@ -262,7 +337,16 @@ func MigrationJSONPrioritized(
 	context MigrationContext,
 	changes []kernel.Change,
 ) error {
-	return migrationJSON(writer, "maize.migration/v3", &context, changes, true)
+	return migrationJSON(writer, "maize.migration/v3", &context, changes, true, nil, false)
+}
+
+func MigrationJSONExplained(
+	writer io.Writer,
+	context MigrationContext,
+	changes []kernel.Change,
+	reasons map[kernel.Symbol][]string,
+) error {
+	return migrationJSON(writer, "maize.migration/v4", &context, changes, true, reasons, true)
 }
 
 func migrationJSON(
@@ -271,14 +355,24 @@ func migrationJSON(
 	context *MigrationContext,
 	changes []kernel.Change,
 	prioritized bool,
+	reasons map[kernel.Symbol][]string,
+	explained bool,
 ) error {
+	type sourceJSON struct {
+		Path   string `json:"path"`
+		Detail string `json:"detail"`
+	}
 	type changeJSON struct {
-		Symbol  string   `json:"symbol"`
-		Kinds   []string `json:"kinds"`
-		Before  *string  `json:"before"`
-		After   *string  `json:"after"`
-		Summary string   `json:"summary"`
-		Impact  string   `json:"impact,omitempty"`
+		Symbol  string       `json:"symbol"`
+		Kinds   []string     `json:"kinds"`
+		Before  *string      `json:"before"`
+		After   *string      `json:"after"`
+		Summary string       `json:"summary"`
+		Impact  string       `json:"impact,omitempty"`
+		Purpose string       `json:"purpose,omitempty"`
+		Help    string       `json:"help,omitempty"`
+		Reasons []string     `json:"current_system_reasons,omitempty"`
+		Sources []sourceJSON `json:"kconfig_sources,omitempty"`
 	}
 	type summaryJSON struct {
 		Total               int `json:"total"`
@@ -316,6 +410,17 @@ func migrationJSON(
 		}
 		if prioritized {
 			item.Impact = string(kernel.ClassifyMigrationChange(change))
+		}
+		if explained {
+			item.Purpose = change.Purpose
+			item.Help = change.Help
+			item.Reasons = append([]string{}, reasons[change.Symbol]...)
+			item.Sources = make([]sourceJSON, 0, len(change.Explanation.Provenance))
+			for _, provenance := range change.Explanation.Provenance {
+				item.Sources = append(item.Sources, sourceJSON{
+					Path: provenance.Source, Detail: provenance.Detail,
+				})
+			}
 		}
 		for _, kind := range change.Kinds {
 			item.Kinds = append(item.Kinds, string(kind))

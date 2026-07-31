@@ -126,3 +126,44 @@ func TestPrioritizedMigrationJSONIncludesSummaryAndImpact(t *testing.T) {
 		t.Fatalf("prioritized JSON:\n%s", output.String())
 	}
 }
+
+func TestExplainedMigrationPrioritizesKnownConsumerAndSerializesPurpose(t *testing.T) {
+	t.Parallel()
+
+	unknown, _ := kernel.ParseSymbol("ALPHA_UNKNOWN")
+	known, _ := kernel.ParseSymbol("ZED_NEEDED")
+	yes := kernel.Yes()
+	changes := []kernel.Change{
+		{Symbol: unknown, Before: &yes, Purpose: "Unknown facility"},
+		{Symbol: known, Before: &yes, Purpose: "Required facility"},
+	}
+	reasons := map[kernel.Symbol][]string{known: {"current package requires it"}}
+	context := report.MigrationContext{
+		RunningRelease: "6.9", RunningConfig: "/proc/config.gz",
+		TargetRelease: "6.10", TargetTree: "/usr/src/linux-6.10",
+		ConsumerEvidence: "evaluated",
+	}
+	var text bytes.Buffer
+	if err := report.MigrationTextWithContextOptions(
+		&text, context, changes, report.MigrationTextOptions{
+			Reasons: reasons, EvidenceComplete: true,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Index(text.String(), "CONFIG_ZED_NEEDED") >
+		strings.Index(text.String(), "CONFIG_ALPHA_UNKNOWN") ||
+		!strings.Contains(text.String(), "Purpose: Required facility") ||
+		!strings.Contains(text.String(), "Current-system reason: current package requires it") {
+		t.Fatalf("explained text:\n%s", text.String())
+	}
+	var document bytes.Buffer
+	if err := report.MigrationJSONExplained(&document, context, changes, reasons); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(document.String(), `"schema": "maize.migration/v4"`) ||
+		!strings.Contains(document.String(), `"purpose": "Required facility"`) ||
+		!strings.Contains(document.String(), `"current package requires it"`) {
+		t.Fatalf("explained JSON:\n%s", document.String())
+	}
+}

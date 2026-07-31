@@ -57,8 +57,9 @@ that target tree. The report always identifies the running release, config
 source, target release, and selected source tree. Text output groups lost and
 new capabilities, built-in/module transitions, changed values, and inactive
 symbol churn. Large groups are capped by default; `--verbose` prints the full
-audit. Contextual JSON uses `maize.migration/v3` and includes every change with
-its impact classification.
+audit. Contextual JSON uses `maize.migration/v4` and includes every change with
+its impact classification, Kconfig purpose/help, source provenance, and known
+current-system consumers.
 
 Consistent snapshots observe Portage state locks by default. Run `inspect` as a
 user that can read those lock files, or explicitly request two-pass lockless

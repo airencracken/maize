@@ -3,6 +3,7 @@ package kernel
 import (
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/airencracken/maize/internal/domain"
 )
@@ -25,6 +26,8 @@ type Change struct {
 	Kinds       []ChangeKind
 	Before      *State
 	After       *State
+	Purpose     string
+	Help        string
 	Explanation domain.Explanation
 }
 
@@ -74,6 +77,33 @@ func SummarizeMigration(changes []Change) MigrationSummary {
 	return result
 }
 
+// ConfigRelevantChanges retains value changes and definition changes for
+// symbols enabled in either configuration. Definition-only churn for inactive
+// symbols is not part of a running-config migration.
+func ConfigRelevantChanges(changes []Change) []Change {
+	result := make([]Change, 0, len(changes))
+	for _, change := range changes {
+		if containsChangeKind(change.Kinds, ChangeValue) ||
+			stateEnabled(change.Before) || stateEnabled(change.After) {
+			result = append(result, change)
+		}
+	}
+	return result
+}
+
+func containsChangeKind(kinds []ChangeKind, expected ChangeKind) bool {
+	for _, kind := range kinds {
+		if kind == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func stateEnabled(state *State) bool {
+	return state != nil && (state.Kind == StateYes || state.Kind == StateModule)
+}
+
 func ClassifyMigrationChange(change Change) MigrationImpact {
 	before, beforeEnabled := tristateValue(change.Before)
 	after, afterEnabled := tristateValue(change.After)
@@ -86,6 +116,9 @@ func ClassifyMigrationChange(change Change) MigrationImpact {
 		return ImpactBuiltinToModule
 	case before == StateModule && after == StateYes:
 		return ImpactModuleToBuiltin
+	case !beforeEnabled && !afterEnabled &&
+		!nonTristateMaterial(change.Before) && !nonTristateMaterial(change.After):
+		return ImpactInactiveChurn
 	case nonTristateMaterial(change.Before) || nonTristateMaterial(change.After):
 		return ImpactValueChanged
 	case hasDefinitionChange(change.Kinds):
@@ -182,10 +215,32 @@ func Compare(oldCatalog, newCatalog Catalog, oldConfig, newConfig Config) []Chan
 		if len(change.Kinds) == 0 {
 			continue
 		}
+		change.Purpose, change.Help = migrationPurpose(oldDefinition, newDefinition)
 		change.Explanation = explainChange(change, oldDefinition, newDefinition)
 		changes = append(changes, change)
 	}
 	return changes
+}
+
+func migrationPurpose(oldDefinition, newDefinition Definition) (string, string) {
+	selected := newDefinition
+	if selected.Prompt == "" && selected.Help == "" {
+		selected = oldDefinition
+	}
+	purpose := selected.Prompt
+	help := selected.Help
+	if purpose == "" {
+		purpose = firstSentence(help)
+	}
+	return purpose, help
+}
+
+func firstSentence(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if end := strings.Index(value, ". "); end >= 0 {
+		return value[:end+1]
+	}
+	return value
 }
 
 func explainChange(change Change, oldDefinition, newDefinition Definition) domain.Explanation {

@@ -42,6 +42,11 @@ The default text report groups consequences and caps large groups. Use
 .B --verbose
 to include every change, including inactive symbol churn. JSON includes the
 complete classified change set.
+For each reported option, Maize includes the target Kconfig purpose when one is
+available. Known current-system package, USE, hardware, and capability reasons
+are shown before changes without consumer evidence. Exact Kconfig help and
+source provenance are included with
+.BR --verbose .
 .TP
 .B check
 Check known required kernel capabilities. Exit status 3 indicates known

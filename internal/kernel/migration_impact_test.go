@@ -25,9 +25,10 @@ func TestClassifyMigrationChangeCoversOperatorConsequences(t *testing.T) {
 		{"strengthened", kernel.Change{Before: &module, After: &yes}, kernel.ImpactModuleToBuiltin},
 		{"value", kernel.Change{Before: &stringA, After: &stringB}, kernel.ImpactValueChanged},
 		{"removed value", kernel.Change{Before: &stringA}, kernel.ImpactValueChanged},
-		{"definition", kernel.Change{Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}}, kernel.ImpactDefinitionChange},
+		{"definition", kernel.Change{Before: &yes, After: &yes, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}}, kernel.ImpactDefinitionChange},
 		{"new disabled", kernel.Change{After: &no, Kinds: []kernel.ChangeKind{kernel.ChangeValue}}, kernel.ImpactInactiveChurn},
 		{"removed disabled", kernel.Change{Before: &no, Kinds: []kernel.ChangeKind{kernel.ChangeValue}}, kernel.ImpactInactiveChurn},
+		{"inactive definition", kernel.Change{Before: &no, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}}, kernel.ImpactInactiveChurn},
 	}
 	for _, test := range tests {
 		test := test
@@ -55,5 +56,20 @@ func TestSummarizeMigrationAccountsForEveryChange(t *testing.T) {
 		summary.DefinitionChanged + summary.InactiveChurnHidden
 	if summary.Total != len(changes) || accounted != summary.Total {
 		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestConfigRelevantChangesDropsInactiveDefinitionOnlyChurn(t *testing.T) {
+	t.Parallel()
+
+	yes, no := kernel.Yes(), kernel.No()
+	changes := []kernel.Change{
+		{Before: &no, After: &no, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}},
+		{Before: &yes, After: &yes, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}},
+		{Before: &no, After: &no, Kinds: []kernel.ChangeKind{kernel.ChangeValue}},
+	}
+	filtered := kernel.ConfigRelevantChanges(changes)
+	if len(filtered) != 2 || filtered[0].Before == nil || filtered[0].Before.Kind != kernel.StateYes {
+		t.Fatalf("filtered = %#v", filtered)
 	}
 }

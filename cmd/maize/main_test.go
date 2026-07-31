@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/airencracken/maize/internal/domain"
+	"github.com/airencracken/maize/internal/kernel"
+	"github.com/airencracken/maize/internal/recommend"
 )
 
 func TestHelpListsEveryCommand(t *testing.T) {
@@ -297,13 +301,51 @@ func TestMigrateDefaultsFromRunningKernelToLatestInstalledSource(t *testing.T) {
 		"migrate", "--root", root, "--format", "json", "--color", "never",
 	}, &stdout, &stderr)
 	if code != 0 || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), `"schema": "maize.migration/v3"`) ||
+		!strings.Contains(stdout.String(), `"schema": "maize.migration/v4"`) ||
+		!strings.Contains(stdout.String(), `"consumer_evidence": "unavailable:`) ||
 		!strings.Contains(stdout.String(), `"inactive_churn"`) ||
 		!strings.Contains(stdout.String(), `"running_release": "6.9.12-gentoo"`) ||
 		!strings.Contains(stdout.String(), `"target_release": "6.10.2-gentoo"`) ||
 		!strings.Contains(stdout.String(), `"target_tree": "`+target+`"`) ||
 		!strings.Contains(stdout.String(), `"symbol": "CONFIG_NEW"`) {
 		t.Fatalf("migrate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestMigrationRecommendationReasonsRetainPurposeAndConsumerEvidence(t *testing.T) {
+	t.Parallel()
+
+	symbol, _ := kernel.ParseSymbol("DM_CRYPT")
+	reasons := migrationRecommendationReasons([]recommend.Recommendation{{
+		Symbol: symbol, Detail: "provide device-mapper encryption",
+		Evidence: []domain.Evidence{{
+			Source: "sys-fs/cryptsetup-2.8.6-r2", Detail: "cryptsetup is installed",
+		}},
+	}})
+	if len(reasons[symbol]) != 2 ||
+		!strings.Contains(strings.Join(reasons[symbol], "\n"), "cryptsetup is installed") ||
+		!strings.Contains(strings.Join(reasons[symbol], "\n"), "device-mapper encryption") {
+		t.Fatalf("reasons = %#v", reasons)
+	}
+}
+
+func TestMigrationConsumerRelevanceKeepsValuesAndKnownDefinitions(t *testing.T) {
+	t.Parallel()
+
+	valueSymbol, _ := kernel.ParseSymbol("VALUE")
+	knownSymbol, _ := kernel.ParseSymbol("KNOWN")
+	unknownSymbol, _ := kernel.ParseSymbol("UNKNOWN")
+	changes := []kernel.Change{
+		{Symbol: valueSymbol, Kinds: []kernel.ChangeKind{kernel.ChangeValue}},
+		{Symbol: knownSymbol, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}},
+		{Symbol: unknownSymbol, Kinds: []kernel.ChangeKind{kernel.ChangeDependencies}},
+	}
+	filtered := migrationConsumerRelevantChanges(
+		changes, map[kernel.Symbol][]string{knownSymbol: {"package needs it"}},
+	)
+	if len(filtered) != 2 || filtered[0].Symbol != valueSymbol ||
+		filtered[1].Symbol != knownSymbol {
+		t.Fatalf("filtered = %#v", filtered)
 	}
 }
 

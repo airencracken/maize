@@ -56,7 +56,12 @@ old/new Kconfig and configuration options retains explicit artifact comparison.
 The text report groups lost and newly enabled capabilities, built-in/module
 transitions, other value changes, and inactive symbol churn. Large groups are
 capped unless @option{--verbose} is supplied. Contextual JSON uses the
-@code{maize.migration/v3} contract and includes every classified change.
+@code{maize.migration/v4} contract and includes every classified change,
+Kconfig purpose and help, source provenance, and known current-system reasons.
+Concise text shows each option's Kconfig purpose and any explicit current
+package, USE, hardware, or capability reason known to Maize. Consumer-backed
+changes sort before changes without known consumers. @option{--verbose} adds
+Kconfig help and exact definition provenance.
 
 @section check
 

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.migration.v4.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "context", "summary", "changes"],
+  "properties": {
+    "schema": {"const": "maize.migration/v4"},
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["running_release", "running_config", "target_release", "target_tree", "consumer_evidence"],
+      "properties": {
+        "running_release": {"type": "string", "minLength": 1},
+        "running_config": {"type": "string", "minLength": 1},
+        "target_release": {"type": "string", "minLength": 1},
+        "target_tree": {"type": "string", "minLength": 1},
+        "consumer_evidence": {"type": "string", "minLength": 1}
+      }
+    },
+    "summary": {"$ref": "#/$defs/summary"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "kinds", "before", "after", "summary", "impact"],
+        "properties": {
+          "symbol": {"type": "string", "pattern": "^CONFIG_[A-Za-z0-9_]+$"},
+          "kinds": {"type": "array", "items": {"type": "string"}},
+          "before": {"type": ["string", "null"]},
+          "after": {"type": ["string", "null"]},
+          "summary": {"type": "string", "minLength": 1},
+          "impact": {"enum": ["lost-capability", "newly-enabled", "builtin-to-module", "module-to-builtin", "value-changed", "definition-changed", "inactive-churn"]},
+          "purpose": {"type": "string"},
+          "help": {"type": "string"},
+          "current_system_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "kconfig_sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "detail"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "detail": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "lost_capabilities", "newly_enabled", "builtin_to_module", "module_to_builtin", "value_changed", "definition_changed", "inactive_churn"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "lost_capabilities": {"type": "integer", "minimum": 0},
+        "newly_enabled": {"type": "integer", "minimum": 0},
+        "builtin_to_module": {"type": "integer", "minimum": 0},
+        "module_to_builtin": {"type": "integer", "minimum": 0},
+        "value_changed": {"type": "integer", "minimum": 0},
+        "definition_changed": {"type": "integer", "minimum": 0},
+        "inactive_churn": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

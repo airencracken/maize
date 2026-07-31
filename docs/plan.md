@@ -178,6 +178,8 @@ maize observe
 - Group resolved value changes by operator impact and hide inactive churn from
   the concise report while preserving it in verbose and JSON output.
 - Explain target-induced value changes.
+- Explain each reported option from Kconfig prompt/help and attach explicit
+  current package, USE, hardware, or capability consumers where known.
 - Emit deterministic text and JSON reports.
 
 ### 2. Model profiles and constraints

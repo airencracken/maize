@@ -36,6 +36,26 @@ func TestParseKconfigRejectsDuplicateDefinitions(t *testing.T) {
 	}
 }
 
+func TestParseKconfigDoesNotBorrowFollowingChoicePurpose(t *testing.T) {
+	t.Parallel()
+
+	catalog, err := kernel.ParseKconfig("fixture", strings.NewReader(`
+config ARCH_PKEY_BITS
+	int
+	default 4
+
+choice
+	prompt "TSX enable mode"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, found := catalog.Get(mustSymbol(t, "ARCH_PKEY_BITS"))
+	if !found || definition.Prompt != "" || definition.Help != "" {
+		t.Fatalf("definition = %#v, found %v", definition, found)
+	}
+}
+
 func TestCatalogDefinitionsAreDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +89,28 @@ func TestCatalogReturnsOwnedDefinitions(t *testing.T) {
 	again, _ := catalog.Get(symbol)
 	if again.DependsOn[0] != "FIRST" {
 		t.Fatalf("returned definition aliases catalog: %#v", again)
+	}
+}
+
+func TestCompareCarriesTargetPurposeAndHelpIntoMigration(t *testing.T) {
+	t.Parallel()
+
+	symbol := mustSymbol(t, "FEATURE")
+	oldCatalog, err := kernel.NewCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCatalog, err := kernel.NewCatalog(kernel.Definition{
+		Symbol: symbol, Prompt: "Useful feature",
+		Help: "Provides a useful facility. Additional implementation detail.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := kernel.Compare(oldCatalog, newCatalog, kernel.Config{}, kernel.Config{})
+	if len(changes) != 1 || changes[0].Purpose != "Useful feature" ||
+		!strings.Contains(changes[0].Help, "Additional") {
+		t.Fatalf("changes = %#v", changes)
 	}
 }
 
