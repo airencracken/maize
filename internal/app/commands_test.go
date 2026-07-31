@@ -54,6 +54,56 @@ func TestCandidateConfigRejectsConflictingSymbolAtomically(t *testing.T) {
 	}
 }
 
+func TestValidateRequiredRecommendationsAcceptsExactAndStrongerStates(t *testing.T) {
+	t.Parallel()
+
+	module, _ := kernel.ParseSymbol("MODULE")
+	exact, _ := kernel.ParseSymbol("EXACT")
+	config, err := kernel.ParseConfig("validated", strings.NewReader(
+		"CONFIG_MODULE=y\nCONFIG_EXACT=y\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = app.ValidateRequiredRecommendations(
+		kernel.TargetValidation{Config: config},
+		[]recommend.Recommendation{
+			{Symbol: module, Desired: kernel.Module(), Disposition: domain.Required},
+			{Symbol: exact, Desired: kernel.Yes(), Disposition: domain.Required},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRequiredRecommendationsReportsEveryRejectedDecision(t *testing.T) {
+	t.Parallel()
+
+	alpha, _ := kernel.ParseSymbol("ALPHA")
+	missing, _ := kernel.ParseSymbol("MISSING")
+	optional, _ := kernel.ParseSymbol("OPTIONAL")
+	config, err := kernel.ParseConfig("validated", strings.NewReader(
+		"# CONFIG_ALPHA is not set\n# CONFIG_OPTIONAL is not set\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = app.ValidateRequiredRecommendations(
+		kernel.TargetValidation{Config: config},
+		[]recommend.Recommendation{
+			{Symbol: alpha, Desired: kernel.Yes(), Disposition: domain.Required},
+			{Symbol: missing, Desired: kernel.Module(), Disposition: domain.Required},
+			{Symbol: optional, Desired: kernel.Yes(), Disposition: domain.Recommended},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "CONFIG_ALPHA requested y") ||
+		!strings.Contains(err.Error(), "CONFIG_MISSING requested m") ||
+		strings.Contains(err.Error(), "CONFIG_OPTIONAL") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestUnsatisfiedFiltersKeepAndOptionalPolicy(t *testing.T) {
 	t.Parallel()
 

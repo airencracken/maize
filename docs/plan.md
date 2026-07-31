@@ -207,7 +207,9 @@ boundary and is covered by contract fixtures. Subprocess adapters are not.
 
 - Combine profiles, hardware, Portage, and existing intent.
 - Choose built-in, module, or disabled states.
-- Validate through target Kconfig.
+- Validate through target Kconfig. The first implementation runs the target
+  tree's `olddefconfig` in an isolated output directory and refuses required
+  decisions that Kconfig cannot preserve.
 - Minimize configuration without discarding unexplained capabilities.
 
 ### 6. Operational hardening

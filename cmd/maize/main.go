@@ -24,7 +24,7 @@ const usage = `maize generates and migrates optimized Gentoo kernel configuratio
 
 Usage:
   maize inspect [--root /] [--config PATH] [--format text|json]
-  maize generate --output PATH [inspection options]
+  maize generate --kernel-tree PATH --output PATH [inspection options]
   maize migrate --old-kconfig PATH --new-kconfig PATH --old-config PATH --new-config PATH
   maize check [inspection options]
   maize impact --config PATH [inspection options]
@@ -172,6 +172,11 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "maize generate requires exactly one --output PATH")
 		return 2
 	}
+	kernelTree, remaining, err := takeOption(remaining, "--kernel-tree")
+	if err != nil || kernelTree == "" {
+		fmt.Fprintln(stderr, "maize generate requires exactly one --kernel-tree PATH")
+		return 2
+	}
 	inspection, _, code := loadInspection("generate", remaining, stderr)
 	if code == -1 {
 		return 0
@@ -192,12 +197,21 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "generate: %v\n", err)
 		return 1
 	}
-	if err := fileutil.WriteAtomic(output, 0o644, candidate.Write); err != nil {
+	validation, err := kernel.ValidateTarget(context.Background(), kernelTree, candidate)
+	if err != nil {
+		fmt.Fprintf(stderr, "generate validation: %v\n", err)
+		return 1
+	}
+	if err := app.ValidateRequiredRecommendations(validation, inspection.Recommendations); err != nil {
+		fmt.Fprintf(stderr, "generate validation: %v\n", err)
+		return 1
+	}
+	if err := fileutil.WriteAtomic(output, 0o644, validation.Config.Write); err != nil {
 		fmt.Fprintf(stderr, "generate output: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "wrote candidate kernel configuration to %s\n", output)
-	fmt.Fprintln(stdout, "target Kconfig validation is still required")
+	fmt.Fprintf(stdout, "wrote target-validated kernel configuration to %s\n", output)
+	fmt.Fprintf(stdout, "target Kconfig resolved %d requested symbol changes\n", len(validation.Changes))
 	return 0
 }
 

@@ -64,6 +64,24 @@ func TestInspectRejectsInvalidArgumentsBeforeReadingHost(t *testing.T) {
 	}
 }
 
+func TestGenerateRequiresOutputAndTargetTreeBeforeReadingHost(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{
+		{"generate"},
+		{"generate", "--output", "candidate.config"},
+		{"generate", "--kernel-tree", "/usr/src/linux"},
+		{"generate", "--output", "one", "--output", "two", "--kernel-tree", "/usr/src/linux"},
+		{"generate", "--output", "candidate.config", "--kernel-tree", "one", "--kernel-tree", "two"},
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("%v exit %d, stdout %q, stderr %q", args, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
 func TestInspectCommandRunsEndToEndAgainstAlternateRoot(t *testing.T) {
 	t.Parallel()
 
@@ -104,11 +122,13 @@ func TestGenerateCheckImpactAndObserveRunAgainstAlternateRoot(t *testing.T) {
 		"CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\n"+
 			"# CONFIG_SECCOMP_FILTER is not set\n")
 	output := filepath.Join(root, "generated.config")
+	kernelTree := commandKernelTreeFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run([]string{
 		"generate", "--root", root, "--config", config, "--output", output,
+		"--kernel-tree", kernelTree,
 	}, &stdout, &stderr)
 	if code != 0 || stderr.Len() != 0 {
 		t.Fatalf("generate exit %d, stderr %q", code, stderr.String())
@@ -159,6 +179,30 @@ func TestGenerateCheckImpactAndObserveRunAgainstAlternateRoot(t *testing.T) {
 	}
 }
 
+func TestGenerateValidationFailureDoesNotCreateOutput(t *testing.T) {
+	t.Parallel()
+
+	root := commandFixture(t)
+	config := filepath.Join(root, "kernel.config")
+	commandWrite(t, config,
+		"CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\n"+
+			"CONFIG_SECCOMP_FILTER=y\n")
+	output := filepath.Join(root, "must-not-exist.config")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{
+		"generate", "--root", root, "--config", config, "--output", output,
+		"--kernel-tree", filepath.Join(root, "missing-kernel"),
+	}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "generate validation:") {
+		t.Fatalf("generate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("output must not be created, stat error = %v", err)
+	}
+}
+
 func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testing.T) {
 	t.Parallel()
 
@@ -177,12 +221,14 @@ func TestGenerateRefusesIncompleteDynamicPackageKernelPolicyAtomically(t *testin
 		"CONFIG_CGROUPS=y\nCONFIG_NAMESPACES=y\nCONFIG_SECCOMP=y\n"+
 			"CONFIG_SECCOMP_FILTER=y\n")
 	output := filepath.Join(root, "must-not-exist.config")
+	kernelTree := commandKernelTreeFixture(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run([]string{
 		"generate", "--root", root, "--config", config, "--output", output,
 		"--repository", "gentoo=" + repository,
+		"--kernel-tree", kernelTree,
 	}, &stdout, &stderr)
 	if code != 1 ||
 		!strings.Contains(stderr.String(), "dynamic package kernel policies require operator review") {
@@ -259,6 +305,16 @@ func commandWrite(t *testing.T, path, value string) {
 	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func commandKernelTreeFixture(t *testing.T) string {
+	t.Helper()
+
+	tree := t.TempDir()
+	commandWrite(t, filepath.Join(tree, "Kconfig"), "mainmenu \"Fixture\"\n")
+	commandWrite(t, filepath.Join(tree, "Makefile"),
+		"olddefconfig:\n\t@test -f \"$(KCONFIG_CONFIG)\"\n")
+	return tree
 }
 
 func TestUnknownCommandIsRejected(t *testing.T) {

@@ -26,7 +26,7 @@ including nichoski/kergen.
 maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
-maize generate --output ./candidate.config
+maize generate --kernel-tree /usr/src/linux --output ./candidate.config
 maize migrate --old-kconfig OLD --new-kconfig NEW --old-config OLD --new-config NEW
 maize check --snapshot-consistency stabilized
 maize impact --config ./proposed.config
@@ -37,10 +37,12 @@ All declared commands have an executable first implementation. `inspect`,
 `check`, `impact`, and `migrate` are read-only. `generate` and `observe` require
 explicit output paths and write atomically.
 
-Generated configurations are candidates, not yet final validated output.
-Hardware-to-Kconfig translation, full target-tree traversal, and validation
-through the target kernel's own Kconfig tools remain required before Maize can
-claim an optimal build configuration.
+`generate` requires an explicit target kernel source tree. It runs that tree's
+`olddefconfig` in an isolated output directory, verifies that required Maize
+decisions survived Kconfig dependency resolution, and atomically writes only
+the validated result. Hardware-to-Kconfig translation and configuration
+minimization remain incomplete, so generated configurations are not yet
+claimed to be optimal.
 
 Consistent snapshots observe Portage state locks by default. Run `inspect` as a
 user that can read those lock files, or explicitly request two-pass lockless
