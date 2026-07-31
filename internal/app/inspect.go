@@ -49,7 +49,7 @@ func Inspect(
 	}
 	return inspectWithInputs(ctx, paths, environment, config, kernel.ConfigSource{
 		Path: configPath, Origin: kernel.ConfigExplicit,
-	}, hardware.Inventory{Schema: 1}, maizegentoo.SnapshotLocked)
+	}, hardware.Inventory{Schema: 1}, maizegentoo.SnapshotLocked, "")
 }
 
 // InspectSystem discovers the most authoritative kernel configuration and
@@ -63,6 +63,19 @@ func InspectSystem(
 	observedAt time.Time,
 	consistency maizegentoo.SnapshotConsistency,
 ) (Inspection, error) {
+	return InspectSystemForKernel(ctx, paths, environment, configPaths, hardwarePaths, observedAt, consistency, "")
+}
+
+func InspectSystemForKernel(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	configPaths kernel.ConfigPaths,
+	hardwarePaths hardware.SystemPaths,
+	observedAt time.Time,
+	consistency maizegentoo.SnapshotConsistency,
+	targetKernelRelease string,
+) (Inspection, error) {
 	config, source, err := kernel.LoadConfig(ctx, configPaths)
 	if err != nil {
 		return Inspection{}, err
@@ -73,7 +86,10 @@ func InspectSystem(
 	if err != nil {
 		return Inspection{}, err
 	}
-	return inspectWithInputs(ctx, paths, environment, config, source, inventory, consistency)
+	if targetKernelRelease == "" {
+		targetKernelRelease = source.RunningRelease
+	}
+	return inspectWithInputs(ctx, paths, environment, config, source, inventory, consistency, targetKernelRelease)
 }
 
 func inspectWithInputs(
@@ -84,9 +100,10 @@ func inspectWithInputs(
 	configSource kernel.ConfigSource,
 	inventory hardware.Inventory,
 	consistency maizegentoo.SnapshotConsistency,
+	kernelRelease string,
 ) (Inspection, error) {
-	snapshot, err := maizegentoo.ReadSystemSnapshotWithConsistency(
-		ctx, paths, environment, 3, consistency,
+	snapshot, err := maizegentoo.ReadSystemSnapshotForKernel(
+		ctx, paths, environment, 3, consistency, kernelRelease,
 	)
 	if err != nil {
 		return Inspection{}, err

@@ -21,6 +21,21 @@ type SourceInventory struct {
 	Target         SourceTree
 }
 
+// InstalledSourceRelease returns the release represented by a valid kernel
+// source tree without consulting the running kernel or /usr/src/linux link.
+func InstalledSourceRelease(path string) (string, error) {
+	resolved, err := validateKernelTree(path)
+	if err != nil {
+		return "", err
+	}
+	fallback := strings.TrimPrefix(filepath.Base(resolved), "linux-")
+	release := sourceRelease(resolved, fallback)
+	if release == "" {
+		return "", fmt.Errorf("kernel source tree %q has no release", resolved)
+	}
+	return release, nil
+}
+
 // DiscoverSourceTrees finds versioned Linux source trees below ROOT/usr/src
 // and selects the newest kernel release. The unversioned linux symlink is not
 // treated as a separate installed source.

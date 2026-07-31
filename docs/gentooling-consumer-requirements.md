@@ -1181,3 +1181,23 @@ All APIs proposed here are read-only. They must not:
 This order lets Maize begin trustworthy package inventory and rule-based
 capability mapping before the harder dynamic ebuild requirement extraction is
 available.
+
+## Gentooling v0.10.0 adoption
+
+Maize now consumes `EvaluateKernelRequirements` with an explicit `pkg_setup`,
+source-merge, installed-USE, and target-kernel-release context. Only active or
+indeterminate fatal unresolved requirements block generation; inactive and
+warning-only uncertainty no longer does. On the reference host this reduced
+the blocking set from 33 installed packages to three.
+
+The remaining concrete Gentooling targets are:
+
+- Treat `CONFIG_CHECK="${CONFIG_CHECK} ..."` as a bounded append. This affects
+  `net-wireless/bluez` when `mesh` or `test` is active.
+- Evaluate simple `MERGE_TYPE` comparisons from the explicit merge context.
+  This affects `sys-apps/bubblewrap` and the Chromium eclass used by
+  `www-client/google-chrome`.
+
+These remain Gentooling responsibilities because Arise can use the same
+evaluation to explain package setup requirements before an emerge. Maize
+should not add its own ebuild interpreter.

@@ -41,7 +41,7 @@ pkg_setup() {
 	}
 	if policy.Package.CPV() != "app-misc/example-1" ||
 		len(policy.Requirements) != 3 || policy.Invocations != 1 ||
-		len(policy.Dynamic) == 0 {
+		len(policy.Dynamic) != 0 {
 		t.Fatalf("policy = %#v", policy)
 	}
 	var conditional maizegentoo.PackageKernelRequirement
@@ -63,7 +63,9 @@ func TestReadPackageKernelPolicyStrictlyRejectsDynamicEvidenceAtomically(t *test
 	ebuild := filepath.Join(repository, "app-misc", "example", "example-1.ebuild")
 	writeFile(t, filepath.Dir(ebuild), filepath.Base(ebuild), `
 CONFIG_CHECK="${RUNTIME_SYMBOL}"
-pkg_setup() { check_extra_config; }
+pkg_setup() {
+	check_extra_config
+}
 `)
 	candidate := shared.RepositoryCandidate{ID: shared.PackageID{
 		Category: "app-misc", Name: "example", Version: "1", Repository: "test",

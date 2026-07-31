@@ -3,7 +3,6 @@ package gentooling
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	shared "github.com/airencracken/gentooling"
 	"github.com/airencracken/maize/internal/domain"
@@ -67,44 +66,59 @@ func ReadPackageKernelPolicy(
 	enabledUse []string,
 	requireComplete bool,
 ) (PackageKernelPolicy, error) {
-	integrity := shared.AllowPartial
-	if requireComplete {
-		integrity = shared.RequireComplete
-	}
-	set, err := shared.ReadKernelRequirements(
-		ctx, candidate, repositories,
-		shared.KernelRequirementOptions{Integrity: integrity},
-	)
+	policy, err := EvaluatePackageKernelPolicy(ctx, candidate, repositories, shared.KernelRequirementContext{
+		Phase: "pkg_setup", MergeType: shared.MergeSource, InstalledUSE: enabledUse,
+	})
 	if err != nil {
 		return PackageKernelPolicy{}, err
 	}
-	result := PackageKernelPolicy{
-		Package: set.Package, Invocations: len(set.Invocations),
+	if requireComplete && len(policy.Dynamic) != 0 {
+		return PackageKernelPolicy{}, fmt.Errorf("incomplete kernel requirements for %s", candidate.ID.CPV())
 	}
+	return policy, nil
+}
+
+func EvaluatePackageKernelPolicy(ctx context.Context, candidate shared.RepositoryCandidate, repositories []shared.Repository, evaluation shared.KernelRequirementContext) (PackageKernelPolicy, error) {
+	set, err := shared.EvaluateKernelRequirements(ctx, candidate, repositories, evaluation)
+	if err != nil {
+		return PackageKernelPolicy{}, err
+	}
+	result := PackageKernelPolicy{Package: set.Package}
+	invocations := make(map[string]bool)
 	for _, requirement := range set.Requirements {
+		if requirement.Invocation.Function != "" {
+			invocations[fmt.Sprintf("%s:%d:%s", requirement.Invocation.Source.Path, requirement.Invocation.Source.Line, requirement.Invocation.Function)] = true
+		}
 		conditions := kernelConditions(requirement.Conditions)
 		result.Requirements = append(result.Requirements, PackageKernelRequirement{
 			Package: set.Package, Symbol: requirement.Symbol,
 			Expectation: kernelExpectation(requirement.Expectation),
 			Severity:    kernelSeverity(requirement.Severity),
 			Conditions:  conditions,
-			Active:      conditionsSatisfied(conditions, enabledUse),
-			Function:    requirement.Function, Origin: requirement.Origin,
+			Active:      requirement.Applicability == shared.Applicable,
+			Function:    requirement.Invocation.Function, Origin: requirement.Origin,
 			Provenance: kernelPolicyProvenance(
 				requirement.Source, requirement.Origin, "structured kernel requirement",
 			),
 		})
 	}
-	for _, dynamic := range set.Dynamic {
-		conditions := kernelConditions(dynamic.Conditions)
+	for _, unresolved := range set.Unresolved {
+		if !unresolved.Blocking {
+			continue
+		}
+		if unresolved.Invocation.Function != "" {
+			invocations[fmt.Sprintf("%s:%d:%s", unresolved.Invocation.Source.Path, unresolved.Invocation.Source.Line, unresolved.Invocation.Function)] = true
+		}
+		conditions := kernelConditions(unresolved.Conditions)
 		result.Dynamic = append(result.Dynamic, DynamicKernelPolicy{
-			Package: set.Package, Expression: dynamic.Expression, Reason: dynamic.Reason,
-			Conditions: conditions, Function: dynamic.Function, Origin: dynamic.Origin,
+			Package: set.Package, Expression: unresolved.DeveloperText, Reason: unresolved.OperatorText,
+			Conditions: conditions, Function: unresolved.Invocation.Function, Origin: unresolved.Origin,
 			Provenance: kernelPolicyProvenance(
-				dynamic.Source, dynamic.Origin, "dynamic kernel policy",
+				unresolved.Source, unresolved.Origin, "unresolved active kernel requirement",
 			),
 		})
 	}
+	result.Invocations = len(invocations)
 	return result, nil
 }
 
@@ -116,15 +130,6 @@ func kernelConditions(input []shared.UseCondition) []KernelUseCondition {
 		})
 	}
 	return result
-}
-
-func conditionsSatisfied(conditions []KernelUseCondition, enabledUse []string) bool {
-	for _, condition := range conditions {
-		if slices.Contains(enabledUse, condition.Flag) != condition.Enabled {
-			return false
-		}
-	}
-	return true
 }
 
 func kernelExpectation(value shared.KernelConfigExpectation) KernelExpectation {

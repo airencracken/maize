@@ -316,7 +316,7 @@ func TestGenerateValidationFailureDoesNotCreateOutput(t *testing.T) {
 		"generate", "--root", root, "--config", config, "--output", output,
 		"--kernel-tree", filepath.Join(root, "missing-kernel"),
 	}, &stdout, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "generate validation:") {
+	if code != 1 || !strings.Contains(stderr.String(), "generate target discovery:") {
 		t.Fatalf("generate exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {

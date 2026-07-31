@@ -30,6 +30,19 @@ func TestDiscoverSourceTreesSelectsLatestKernelVersionAndMarksRunning(t *testing
 	}
 }
 
+func TestInstalledSourceReleaseUsesDeclaredReleaseAndValidatesTree(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	tree := sourceTreeFixture(t, root, "linux-7.1.5-gentoo", "7.1.5-gentoo-r2")
+	release, err := InstalledSourceRelease(tree)
+	if err != nil || release != "7.1.5-gentoo-r2" {
+		t.Fatalf("release %q, error %v", release, err)
+	}
+	if _, err := InstalledSourceRelease(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("missing tree accepted")
+	}
+}
+
 func TestKernelReleaseOrderingHandlesNumericRevisionsAndPrereleases(t *testing.T) {
 	t.Parallel()
 

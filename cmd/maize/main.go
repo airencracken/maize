@@ -78,7 +78,7 @@ func (values *repositoryFlags) Set(value string) error {
 }
 
 func runInspect(args []string, stdout, stderr io.Writer) int {
-	inspection, format, style, verbose, code := loadInspection("inspect", args, stdout, stderr)
+	inspection, format, style, verbose, code := loadInspection("inspect", args, "", stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -103,6 +103,7 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 func loadInspection(
 	command string,
 	args []string,
+	targetKernelRelease string,
 	stdout io.Writer,
 	stderr io.Writer,
 ) (app.Inspection, string, terminal.Style, bool, int) {
@@ -171,8 +172,9 @@ func loadInspection(
 		configPaths.ProcRelease = filepath.Join(*procfsPath, "sys", "kernel", "osrelease")
 	}
 
-	inspection, err := app.InspectSystem(
+	inspection, err := app.InspectSystemForKernel(
 		context.Background(), paths, nil, configPaths, hardwarePaths, time.Time{}, consistency,
+		targetKernelRelease,
 	)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", command, err)
@@ -213,23 +215,28 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--experimental-best-guess and --experimental-minimize are mutually exclusive")
 		return 2
 	}
-	inspection, _, style, verbose, code := loadInspection("generate", remaining, stdout, stderr)
-	if code == -1 {
-		return 0
-	}
-	if code != 0 {
-		return code
-	}
+	root := inspectionRoot(remaining)
 	if kernelTree == "" {
-		root := inspectionRoot(remaining)
 		inventory, discoverErr := kernel.DiscoverSourceTrees(root, "")
 		if discoverErr != nil {
 			fmt.Fprintf(stderr, "generate target discovery: %v\n", discoverErr)
 			return 1
 		}
 		kernelTree = inventory.Target.Path
-		fmt.Fprintf(stdout, "selected newest installed kernel source %s (%s)\n", style.Cyan(kernelTree), inventory.Target.Release)
 	}
+	targetRelease, err := kernel.InstalledSourceRelease(kernelTree)
+	if err != nil {
+		fmt.Fprintf(stderr, "generate target discovery: %v\n", err)
+		return 1
+	}
+	inspection, _, style, verbose, code := loadInspection("generate", remaining, targetRelease, stdout, stderr)
+	if code == -1 {
+		return 0
+	}
+	if code != 0 {
+		return code
+	}
+	fmt.Fprintf(stdout, "selected target kernel source %s (%s)\n", style.Cyan(kernelTree), targetRelease)
 	if len(inspection.DynamicKernelPolicy) != 0 {
 		writeDynamicPolicyFailure(stderr, inspection.DynamicKernelPolicy, verbose)
 		return 1
@@ -306,7 +313,7 @@ func hasHelpSwitch(args []string) bool {
 }
 
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	inspection, _, style, verbose, code := loadInspection("check", args, stdout, stderr)
+	inspection, _, style, verbose, code := loadInspection("check", args, "", stdout, stderr)
 	if code == -1 {
 		return 0
 	}
@@ -334,7 +341,7 @@ func runImpact(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "maize impact requires --config PATH")
 		return 2
 	}
-	inspection, format, style, verbose, code := loadInspection("impact", args, stdout, stderr)
+	inspection, format, style, verbose, code := loadInspection("impact", args, "", stdout, stderr)
 	if code == -1 {
 		return 0
 	}

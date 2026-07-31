@@ -75,6 +75,17 @@ func ReadSystemSnapshotWithConsistency(
 	attempts int,
 	consistency SnapshotConsistency,
 ) (SystemSnapshotEvidence, error) {
+	return ReadSystemSnapshotForKernel(ctx, paths, environment, attempts, consistency, "")
+}
+
+func ReadSystemSnapshotForKernel(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	attempts int,
+	consistency SnapshotConsistency,
+	kernelRelease string,
+) (SystemSnapshotEvidence, error) {
 	sharedConsistency, err := sharedSnapshotConsistency(consistency)
 	if err != nil {
 		return SystemSnapshotEvidence{}, err
@@ -106,9 +117,10 @@ func ReadSystemSnapshotWithConsistency(
 		if !found || !slices.Contains(candidate.Inherited, "linux-info") {
 			continue
 		}
-		policy, policyErr := ReadPackageKernelPolicy(
-			ctx, candidate, snapshot.Repositories, installed.EnabledUse, false,
-		)
+		policy, policyErr := EvaluatePackageKernelPolicy(ctx, candidate, snapshot.Repositories, shared.KernelRequirementContext{
+			Phase: "pkg_setup", KernelRelease: kernelRelease, MergeType: shared.MergeSource,
+			InstalledUSE: append([]string(nil), installed.EnabledUse...),
+		})
 		if policyErr != nil {
 			return SystemSnapshotEvidence{}, policyErr
 		}
