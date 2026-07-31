@@ -10,7 +10,31 @@ import (
 func TestInspectSchemaIsValidAndRequiresPublicContractFields(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile("maize.inspect.v1.schema.json")
+	for _, test := range []struct {
+		path     string
+		required []string
+	}{
+		{"maize.inspect.v1.schema.json", []string{
+			"schema", "installed_count", "world_selections",
+			"system_selections", "recommendations",
+		}},
+		{"maize.inspect.v2.schema.json", []string{
+			"schema", "config_source", "hardware", "snapshot_consistency",
+			"repositories", "installed_count",
+			"world_selections", "system_selections", "recommendations",
+		}},
+	} {
+		test := test
+		t.Run(test.path, func(t *testing.T) {
+			t.Parallel()
+			assertSchema(t, test.path, test.required)
+		})
+	}
+}
+
+func assertSchema(t *testing.T, path string, expected []string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,10 +46,6 @@ func TestInspectSchemaIsValidAndRequiresPublicContractFields(t *testing.T) {
 	}
 	if err := json.Unmarshal(data, &schema); err != nil {
 		t.Fatalf("invalid JSON schema: %v", err)
-	}
-	expected := []string{
-		"schema", "installed_count", "world_selections",
-		"system_selections", "recommendations",
 	}
 	if schema.Schema != "https://json-schema.org/draft/2020-12/schema" ||
 		schema.Type != "object" || !reflect.DeepEqual(schema.Required, expected) {

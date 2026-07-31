@@ -58,6 +58,7 @@ func TestInspectRejectsInvalidArgumentsBeforeReadingHost(t *testing.T) {
 
 	tests := [][]string{
 		{"inspect", "--format", "yaml"},
+		{"inspect", "--snapshot-consistency", "eventual"},
 		{"inspect", "--repository", "missing-separator"},
 		{"inspect", "--repository", "bad/name=/tmp"},
 		{"inspect", "--repository", "same=/one", "--repository", "same=/two"},
@@ -93,7 +94,7 @@ func TestInspectCommandRunsEndToEndAgainstAlternateRoot(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", exitCode, stderr.String())
 	}
 	for _, expected := range []string{
-		`"schema": "maize.inspect/v1"`,
+		`"schema": "maize.inspect/v2"`,
 		`"symbol": "CONFIG_SECCOMP_FILTER"`,
 		`"action": "enable"`,
 	} {
@@ -107,6 +108,9 @@ func commandFixture(t *testing.T) string {
 	t.Helper()
 
 	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sys"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	repository := filepath.Join(root, "var", "db", "repos", "gentoo")
 	profile := filepath.Join(repository, "profiles", "default", "linux", "amd64")
 	commandWrite(t, filepath.Join(repository, "profiles", "base", "packages"), "*sys-apps/baselayout\n")

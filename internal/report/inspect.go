@@ -7,15 +7,63 @@ import (
 
 	"github.com/airencracken/maize/internal/app"
 	"github.com/airencracken/maize/internal/domain"
+	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/recommend"
 )
 
 type inspectJSON struct {
-	Schema           string               `json:"schema"`
-	InstalledCount   int                  `json:"installed_count"`
-	WorldSelections  []selectionJSON      `json:"world_selections"`
-	SystemSelections []selectionJSON      `json:"system_selections"`
-	Recommendations  []recommendationJSON `json:"recommendations"`
+	Schema              string               `json:"schema"`
+	ConfigSource        configSourceJSON     `json:"config_source"`
+	Hardware            hardwareJSON         `json:"hardware"`
+	SnapshotConsistency string               `json:"snapshot_consistency"`
+	Repositories        []repositoryJSON     `json:"repositories"`
+	InstalledCount      int                  `json:"installed_count"`
+	WorldSelections     []selectionJSON      `json:"world_selections"`
+	SystemSelections    []selectionJSON      `json:"system_selections"`
+	Recommendations     []recommendationJSON `json:"recommendations"`
+}
+
+type repositoryJSON struct {
+	Name     string   `json:"name"`
+	Location string   `json:"location"`
+	Priority int      `json:"priority"`
+	Main     bool     `json:"main"`
+	Masters  []string `json:"masters"`
+	Source   string   `json:"source"`
+	Detail   string   `json:"detail"`
+}
+
+type configSourceJSON struct {
+	Path           string `json:"path"`
+	Origin         string `json:"origin"`
+	RunningRelease string `json:"running_release,omitempty"`
+	Compressed     bool   `json:"compressed"`
+}
+
+type hardwareJSON struct {
+	Schema  uint         `json:"schema"`
+	Devices []deviceJSON `json:"devices"`
+}
+
+type deviceJSON struct {
+	Bus        string           `json:"bus"`
+	Address    string           `json:"address"`
+	Vendor     string           `json:"vendor,omitempty"`
+	Product    string           `json:"product,omitempty"`
+	Class      string           `json:"class,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	Driver     string           `json:"driver,omitempty"`
+	Modules    []string         `json:"modules"`
+	Firmware   []string         `json:"firmware"`
+	Presence   string           `json:"presence"`
+	Provenance []provenanceJSON `json:"provenance"`
+}
+
+type provenanceJSON struct {
+	Kind       string `json:"kind"`
+	Source     string `json:"source"`
+	Detail     string `json:"detail"`
+	ObservedAt string `json:"observed_at,omitempty"`
 }
 
 type selectionJSON struct {
@@ -45,8 +93,10 @@ type evidenceJSON struct {
 
 func InspectionText(writer io.Writer, inspection app.Inspection) error {
 	if _, err := fmt.Fprintf(
-		writer, "Maize inspection\nInstalled packages: %d\nWorld selections: %d\nSystem selections: %d\nKernel recommendations: %d\n",
-		inspection.InstalledCount, len(inspection.WorldSelections),
+		writer, "Maize inspection\nKernel config: %s (%s)\nHardware devices: %d\nSnapshot consistency: %s\nRepositories: %d\nInstalled packages: %d\nWorld selections: %d\nSystem selections: %d\nKernel recommendations: %d\n",
+		inspection.ConfigSource.Path, inspection.ConfigSource.Origin,
+		len(inspection.Hardware.Devices), inspection.SnapshotConsistency,
+		len(inspection.Repositories), inspection.InstalledCount, len(inspection.WorldSelections),
 		len(inspection.SystemSelections), len(inspection.Recommendations),
 	); err != nil {
 		return err
@@ -78,9 +128,25 @@ func InspectionText(writer io.Writer, inspection app.Inspection) error {
 func InspectionJSON(writer io.Writer, inspection app.Inspection) error {
 	document := inspectJSON{
 		Schema: inspection.Schema, InstalledCount: inspection.InstalledCount,
-		WorldSelections:  make([]selectionJSON, 0, len(inspection.WorldSelections)),
-		SystemSelections: make([]selectionJSON, 0, len(inspection.SystemSelections)),
-		Recommendations:  make([]recommendationJSON, 0, len(inspection.Recommendations)),
+		ConfigSource: configSourceJSON{
+			Path: inspection.ConfigSource.Path, Origin: string(inspection.ConfigSource.Origin),
+			RunningRelease: inspection.ConfigSource.RunningRelease,
+			Compressed:     inspection.ConfigSource.Compressed,
+		},
+		Hardware:            hardwareDocument(inspection.Hardware),
+		SnapshotConsistency: string(inspection.SnapshotConsistency),
+		Repositories:        make([]repositoryJSON, 0, len(inspection.Repositories)),
+		WorldSelections:     make([]selectionJSON, 0, len(inspection.WorldSelections)),
+		SystemSelections:    make([]selectionJSON, 0, len(inspection.SystemSelections)),
+		Recommendations:     make([]recommendationJSON, 0, len(inspection.Recommendations)),
+	}
+	for _, repository := range inspection.Repositories {
+		document.Repositories = append(document.Repositories, repositoryJSON{
+			Name: repository.Name, Location: repository.Location,
+			Priority: repository.Priority, Main: repository.Main,
+			Masters: append([]string{}, repository.Masters...),
+			Source:  repository.Provenance.Source, Detail: repository.Provenance.Detail,
+		})
 	}
 	for _, selection := range inspection.WorldSelections {
 		document.WorldSelections = append(document.WorldSelections, selectionJSON{
@@ -103,6 +169,35 @@ func InspectionJSON(writer io.Writer, inspection app.Inspection) error {
 	encoder.SetIndent("", "  ")
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(document)
+}
+
+func hardwareDocument(inventory hardware.Inventory) hardwareJSON {
+	result := hardwareJSON{
+		Schema: inventory.Schema, Devices: make([]deviceJSON, 0, len(inventory.Devices)),
+	}
+	for _, device := range inventory.Devices {
+		translated := deviceJSON{
+			Bus: string(device.Bus), Address: device.ID.Address,
+			Vendor: device.ID.Vendor, Product: device.ID.Product, Class: device.ID.Class,
+			Name: device.Name, Driver: device.Driver,
+			Modules:    append([]string{}, device.Modules...),
+			Firmware:   append([]string{}, device.Firmware...),
+			Presence:   string(device.Presence),
+			Provenance: make([]provenanceJSON, 0, len(device.Provenance)),
+		}
+		for _, provenance := range device.Provenance {
+			observedAt := ""
+			if !provenance.ObservedAt.IsZero() {
+				observedAt = provenance.ObservedAt.UTC().Format("2006-01-02T15:04:05.999999999Z")
+			}
+			translated.Provenance = append(translated.Provenance, provenanceJSON{
+				Kind: string(provenance.Kind), Source: provenance.Source,
+				Detail: provenance.Detail, ObservedAt: observedAt,
+			})
+		}
+		result.Devices = append(result.Devices, translated)
+	}
+	return result
 }
 
 func recommendationDocument(item recommend.Recommendation) recommendationJSON {

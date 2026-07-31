@@ -390,6 +390,46 @@ No additional Gentooling API blocks installed-package inspection. Hardware
 collection, target-Kconfig validation, broader reviewed rules, and generation
 are now Maize work.
 
+## Gentooling v0.7.0 update
+
+Gentooling `v0.7.0` resolves both gaps found by the first live Maize pipeline:
+
+- Root-aware `repos.conf` discovery with master ordering, priorities, main
+  repository identity, synchronization metadata, and provenance.
+- Explicit locked-and-stabilized and stabilized-lockless snapshot modes, with
+  the achieved guarantee recorded and no silent fallback.
+
+Maize now relies on repository discovery by default and retains
+`--repository NAME=PATH` only as an operator override. Inspection remains
+strictly locked by default; an unprivileged operator must explicitly choose
+`--snapshot-consistency stabilized`. The report records repository evidence and
+the snapshot consistency mode.
+
+The remaining concrete Gentooling needs are prospective repository candidate
+metadata and, later, snapshot-bound prospective policy evaluation. Neither
+blocks current installed-package inspection.
+
+The first live v0.7 pipeline run exposed one immediate correctness gap:
+Gentooling's effective configuration reader rejects multiline quoted
+assignments in the installed Portage `make.globals`, including the standard
+multiline `FEATURES` value. Supporting Portage's real assignment continuation
+syntax is needed now; Maize must not add a competing parser or preprocess the
+file. Fixture-only inspection works, but live inspection remains blocked until
+Gentooling accepts this canonical configuration form.
+
+### Linux host inspection promotion finding
+
+The sysfs walker and kernel-configuration discovery implemented for Maize do
+not currently duplicate Arise functionality. Arise master has no sysfs
+inventory or `/proc/config.gz` reader, so promoting these APIs into Gentooling
+now would create an assumed shared abstraction without a second consumer.
+
+They remain deliberately root-aware and isolated inside Maize. Promotion should
+be reconsidered if Arise needs the same evidence for bug reports, kernel-aware
+build diagnostics, or host compatibility checks. The reusable candidate would
+be bounded Linux host observation and configuration-source provenance; the
+translation from devices to kernel capabilities must remain Maize-specific.
+
 ## Needed now
 
 ### 1. Installed package inventory

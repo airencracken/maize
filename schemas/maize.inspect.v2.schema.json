@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/airencracken/maize/schemas/maize.inspect.v2.schema.json",
+  "title": "Maize inspection report v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "config_source",
+    "hardware",
+    "snapshot_consistency",
+    "repositories",
+    "installed_count",
+    "world_selections",
+    "system_selections",
+    "recommendations"
+  ],
+  "properties": {
+    "schema": {"const": "maize.inspect/v2"},
+    "config_source": {"$ref": "#/$defs/config_source"},
+    "hardware": {"$ref": "#/$defs/hardware"},
+    "snapshot_consistency": {
+      "enum": ["locked-and-stabilized", "stabilized-lockless"]
+    },
+    "repositories": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/repository"}
+    },
+    "installed_count": {"type": "integer", "minimum": 0},
+    "world_selections": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/selection"}
+    },
+    "system_selections": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/selection"}
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/recommendation"}
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name", "location", "priority", "main", "masters", "source", "detail"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "location": {"type": "string", "minLength": 1},
+        "priority": {"type": "integer"},
+        "main": {"type": "boolean"},
+        "masters": {"type": "array", "items": {"type": "string"}},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "config_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "origin", "compressed"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "origin": {
+          "enum": ["explicit", "running-kernel", "boot", "kernel-source"]
+        },
+        "running_release": {"type": "string"},
+        "compressed": {"type": "boolean"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source", "detail"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1},
+        "observed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bus", "address", "modules", "firmware", "presence", "provenance"
+      ],
+      "properties": {
+        "bus": {"type": "string", "minLength": 1},
+        "address": {"type": "string", "minLength": 1},
+        "vendor": {"type": "string"},
+        "product": {"type": "string"},
+        "class": {"type": "string"},
+        "name": {"type": "string"},
+        "driver": {"type": "string"},
+        "modules": {"type": "array", "items": {"type": "string"}},
+        "firmware": {"type": "array", "items": {"type": "string"}},
+        "presence": {"enum": ["present", "historical", "declared"]},
+        "provenance": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/provenance"}
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "devices"],
+      "properties": {
+        "schema": {"const": 1},
+        "devices": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/device"}
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "kind", "source", "detail"],
+      "properties": {
+        "value": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["package", "set"]},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source", "detail", "confidence"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["certain", "high", "medium", "low"]}
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability", "disposition", "symbol", "current", "desired",
+        "action", "detail", "evidence"
+      ],
+      "properties": {
+        "capability": {"type": "string", "minLength": 1},
+        "disposition": {
+          "enum": ["required", "recommended", "optional", "prohibited"]
+        },
+        "symbol": {"type": "string", "pattern": "^CONFIG_[A-Za-z0-9_]+$"},
+        "current": {"type": ["string", "null"]},
+        "desired": {"type": "string"},
+        "action": {"enum": ["keep", "enable", "disable", "change"]},
+        "detail": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    }
+  }
+}

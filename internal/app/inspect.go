@@ -4,22 +4,28 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	shared "github.com/airencracken/gentooling"
 	maizegentoo "github.com/airencracken/maize/internal/gentooling"
+	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/recommend"
 	"github.com/airencracken/maize/internal/resolve"
 )
 
-const InspectSchema = "maize.inspect/v1"
+const InspectSchema = "maize.inspect/v2"
 
 type Inspection struct {
-	Schema           string
-	InstalledCount   int
-	WorldSelections  []maizegentoo.SelectionEvidence
-	SystemSelections []maizegentoo.SelectionEvidence
-	Recommendations  []recommend.Recommendation
+	Schema              string
+	ConfigSource        kernel.ConfigSource
+	Hardware            hardware.Inventory
+	Repositories        []maizegentoo.RepositoryEvidence
+	SnapshotConsistency maizegentoo.SnapshotConsistency
+	InstalledCount      int
+	WorldSelections     []maizegentoo.SelectionEvidence
+	SystemSelections    []maizegentoo.SelectionEvidence
+	Recommendations     []recommend.Recommendation
 }
 
 // Inspect runs the first read-only Maize pipeline from a consistent Gentoo
@@ -38,7 +44,47 @@ func Inspect(
 	if err != nil {
 		return Inspection{}, err
 	}
-	snapshot, err := maizegentoo.ReadSystemSnapshot(ctx, paths, environment, 3)
+	return inspectWithInputs(ctx, paths, environment, config, kernel.ConfigSource{
+		Path: configPath, Origin: kernel.ConfigExplicit,
+	}, hardware.Inventory{Schema: 1}, maizegentoo.SnapshotLocked)
+}
+
+// InspectSystem discovers the most authoritative kernel configuration and
+// walks current sysfs hardware before evaluating Gentoo package requirements.
+func InspectSystem(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	configPaths kernel.ConfigPaths,
+	hardwarePaths hardware.SystemPaths,
+	observedAt time.Time,
+	consistency maizegentoo.SnapshotConsistency,
+) (Inspection, error) {
+	config, source, err := kernel.LoadConfig(ctx, configPaths)
+	if err != nil {
+		return Inspection{}, err
+	}
+	inventory, err := hardware.Collect(ctx, hardwarePaths, hardware.CollectOptions{
+		ObservedAt: observedAt,
+	})
+	if err != nil {
+		return Inspection{}, err
+	}
+	return inspectWithInputs(ctx, paths, environment, config, source, inventory, consistency)
+}
+
+func inspectWithInputs(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	config kernel.Config,
+	configSource kernel.ConfigSource,
+	inventory hardware.Inventory,
+	consistency maizegentoo.SnapshotConsistency,
+) (Inspection, error) {
+	snapshot, err := maizegentoo.ReadSystemSnapshotWithConsistency(
+		ctx, paths, environment, 3, consistency,
+	)
 	if err != nil {
 		return Inspection{}, err
 	}
@@ -55,9 +101,12 @@ func Inspect(
 		return Inspection{}, err
 	}
 	return Inspection{
-		Schema: InspectSchema, InstalledCount: len(snapshot.Installed.Packages),
-		WorldSelections:  append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.World...),
-		SystemSelections: append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.System...),
-		Recommendations:  recommendations,
+		Schema: InspectSchema, ConfigSource: configSource, Hardware: inventory,
+		Repositories:        append([]maizegentoo.RepositoryEvidence(nil), snapshot.Repositories...),
+		SnapshotConsistency: snapshot.Consistency,
+		InstalledCount:      len(snapshot.Installed.Packages),
+		WorldSelections:     append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.World...),
+		SystemSelections:    append([]maizegentoo.SelectionEvidence(nil), snapshot.Selections.System...),
+		Recommendations:     recommendations,
 	}, nil
 }

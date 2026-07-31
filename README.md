@@ -6,9 +6,10 @@ package USE flags, operator profiles, an existing kernel configuration, and the
 target kernel's Kconfig model.
 
 Maize is under active development. Its first executable pipeline is
-`maize inspect`: it reads a consistent Gentoo system snapshot and an existing
-Linux `.config`, applies reviewed installed-package and USE rules, and reports
-the kernel symbols that are already satisfied or should change. It also
+`maize inspect`: it reads a consistent Gentoo system snapshot, walks current
+sysfs hardware, and discovers or accepts an existing Linux `.config`. It
+applies reviewed installed-package and USE rules and reports the kernel symbols
+that are already satisfied or should change. It also
 provides normalized kernel and evidence models, an explanatory Kconfig parser,
 semantic migration classification, and hardware inventory values. See
 [docs/plan.md](docs/plan.md) for the product plan and
@@ -20,6 +21,7 @@ including nichoski/kergen.
 ## Commands
 
 ```text
+maize inspect
 maize inspect --config /usr/src/linux/.config
 maize inspect --format json
 maize generate
@@ -35,10 +37,19 @@ operator choices.
 `inspect` is implemented and read-only. The remaining commands describe the
 planned workflow and currently report that they are not implemented.
 
-Consistent snapshots observe Portage state locks. Run `inspect` as a user that
-can read those lock files. Additional repositories can be supplied with
-repeatable `--repository NAME=PATH` options until Gentooling provides
-root-aware repository configuration discovery.
+Consistent snapshots observe Portage state locks by default. Run `inspect` as a
+user that can read those lock files, or explicitly request two-pass lockless
+stabilization with `--snapshot-consistency stabilized`. Gentooling discovers
+root-aware repository configuration; repeatable `--repository NAME=PATH`
+options remain available as explicit overrides.
+
+Without `--config`, inspection prefers `/proc/config.gz`, then the running
+release's `/boot/config-*`, then `/usr/src/linux/.config`. Alternate roots may
+provide explicit virtual filesystem locations:
+
+```text
+maize inspect --root /mnt/gentoo --sysfs /mnt/gentoo/sys --procfs /mnt/gentoo/proc
+```
 
 ## Development
 

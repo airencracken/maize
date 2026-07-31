@@ -109,6 +109,48 @@ func TestReadSystemSnapshotHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestReadSystemSnapshotDiscoversRepositoriesAndSupportsExplicitLocklessMode(t *testing.T) {
+	t.Parallel()
+
+	paths := systemSnapshotFixture(t)
+	root := filepath.Dir(filepath.Dir(filepath.Dir(paths.ActiveProfile)))
+	paths.Root = root
+	paths.ReposConf = filepath.Join(root, "etc", "portage", "repos.conf")
+	paths.Repositories = nil
+	writeFile(t, paths.ReposConf, "gentoo.conf",
+		"[DEFAULT]\nmain-repo = gentoo\n[gentoo]\nlocation = /repos/gentoo\n")
+
+	snapshot, err := maizegentoo.ReadSystemSnapshotWithConsistency(
+		context.Background(), paths, nil, 2, maizegentoo.SnapshotStabilized,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Consistency != maizegentoo.SnapshotStabilized ||
+		len(snapshot.Repositories) != 1 ||
+		snapshot.Repositories[0].Name != "gentoo" ||
+		!snapshot.Repositories[0].Main ||
+		snapshot.Repositories[0].Location != filepath.Join(root, "repos", "gentoo") ||
+		snapshot.Repositories[0].Provenance.Kind != domain.SourceConfig {
+		t.Fatalf("snapshot repositories = %#v, consistency %q",
+			snapshot.Repositories, snapshot.Consistency)
+	}
+}
+
+func TestReadSystemSnapshotRejectsUnknownConsistencyAtomically(t *testing.T) {
+	t.Parallel()
+
+	snapshot, err := maizegentoo.ReadSystemSnapshotWithConsistency(
+		context.Background(), systemSnapshotFixture(t), nil, 2, "hostile",
+	)
+	if err == nil {
+		t.Fatal("unknown consistency accepted")
+	}
+	if !reflect.DeepEqual(snapshot, maizegentoo.SystemSnapshotEvidence{}) {
+		t.Fatalf("invalid consistency returned partial snapshot: %#v", snapshot)
+	}
+}
+
 func systemSnapshotFixture(t *testing.T) shared.SystemPaths {
 	t.Helper()
 

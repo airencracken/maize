@@ -96,12 +96,13 @@ graph, effective USE evaluation, and prospective visibility policy. Maize does
 not parse `/etc/portage`, profiles, world files, repository keyword policy, or
 ebuild policy itself.
 
-The first application pipeline implements `maize inspect`. It translates
-reviewed installed-package and recorded-USE rules into capabilities, resolves
-them, maps them to curated kernel symbols, compares them with an existing
-`.config`, and emits deterministic text or versioned JSON. This pipeline is
-read-only and does not yet claim hardware completeness or target-Kconfig
-validation.
+The first application pipeline implements `maize inspect`. It collects current
+sysfs devices, discovers or accepts a running/source kernel configuration,
+translates reviewed installed-package and recorded-USE rules into
+capabilities, resolves them, maps them to curated kernel symbols, and emits
+deterministic text or versioned JSON. This pipeline is read-only. Hardware is
+reported with provenance but is not yet translated into complete Kconfig
+requirements, and target-Kconfig validation remains pending.
 
 ### `cmd/maize`
 

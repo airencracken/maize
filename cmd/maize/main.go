@@ -9,9 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	shared "github.com/airencracken/gentooling"
 	"github.com/airencracken/maize/internal/app"
+	maizegentoo "github.com/airencracken/maize/internal/gentooling"
+	"github.com/airencracken/maize/internal/hardware"
+	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/report"
 )
 
@@ -63,8 +67,11 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("maize inspect", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	root := flags.String("root", "/", "Gentoo installation root")
-	configPath := flags.String("config", "", "existing Linux .config")
+	configPath := flags.String("config", "", "kernel config; default discovers running, boot, then source config")
+	sysfsPath := flags.String("sysfs", "", "sysfs root; default ROOT/sys")
+	procfsPath := flags.String("procfs", "", "procfs root; default ROOT/proc")
 	format := flags.String("format", "text", "output format: text or json")
+	snapshotMode := flags.String("snapshot-consistency", "locked", "snapshot consistency: locked or stabilized")
 	var repositories repositoryFlags
 	flags.Var(&repositories, "repository", "repository NAME=PATH; may be repeated")
 	if err := flags.Parse(args); err != nil {
@@ -81,13 +88,16 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid format %q\n", *format)
 		return 2
 	}
+	consistency := maizegentoo.SnapshotLocked
+	if *snapshotMode == "stabilized" {
+		consistency = maizegentoo.SnapshotStabilized
+	} else if *snapshotMode != "locked" {
+		fmt.Fprintf(stderr, "invalid snapshot consistency %q\n", *snapshotMode)
+		return 2
+	}
 
 	paths := shared.DefaultSystemPaths(*root)
-	if len(repositories) == 0 {
-		paths.Repositories = []shared.RepositoryPath{{
-			Name: "gentoo", Path: filepath.Join(filepath.Clean(*root), "var", "db", "repos", "gentoo"),
-		}}
-	} else {
+	if len(repositories) != 0 {
 		seenRepositories := make(map[string]bool)
 		for _, raw := range repositories {
 			name, path, found := strings.Cut(raw, "=")
@@ -99,18 +109,20 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 			paths.Repositories = append(paths.Repositories, shared.RepositoryPath{Name: name, Path: path})
 		}
 	}
-	selectedConfig := *configPath
-	if selectedConfig == "" {
-		selectedConfig = filepath.Join(filepath.Clean(*root), "usr", "src", "linux", ".config")
+	configPaths := kernel.DefaultConfigPaths(*root)
+	configPaths.Explicit = *configPath
+	hardwarePaths := hardware.DefaultSystemPaths(*root)
+	if *sysfsPath != "" {
+		hardwarePaths.Sys = *sysfsPath
 	}
-	file, err := os.Open(selectedConfig)
-	if err != nil {
-		fmt.Fprintf(stderr, "open kernel configuration: %v\n", err)
-		return 1
+	if *procfsPath != "" {
+		configPaths.ProcConfig = filepath.Join(*procfsPath, "config.gz")
+		configPaths.ProcRelease = filepath.Join(*procfsPath, "sys", "kernel", "osrelease")
 	}
-	defer file.Close()
 
-	inspection, err := app.Inspect(context.Background(), paths, nil, selectedConfig, file)
+	inspection, err := app.InspectSystem(
+		context.Background(), paths, nil, configPaths, hardwarePaths, time.Time{}, consistency,
+	)
 	if err != nil {
 		fmt.Fprintf(stderr, "inspect: %v\n", err)
 		return 1

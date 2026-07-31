@@ -6,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/airencracken/maize/internal/app"
 	"github.com/airencracken/maize/internal/domain"
+	maizegentoo "github.com/airencracken/maize/internal/gentooling"
+	"github.com/airencracken/maize/internal/hardware"
 	"github.com/airencracken/maize/internal/kernel"
 	"github.com/airencracken/maize/internal/recommend"
 	"github.com/airencracken/maize/internal/report"
@@ -30,11 +33,15 @@ func TestInspectionJSONEmitsVersionedDeterministicContract(t *testing.T) {
 		t.Fatalf("JSON changed:\n%s\n%s", first.String(), second.String())
 	}
 	var document struct {
-		Schema           string `json:"schema"`
-		InstalledCount   int    `json:"installed_count"`
-		WorldSelections  []any  `json:"world_selections"`
-		SystemSelections []any  `json:"system_selections"`
-		Recommendations  []struct {
+		Schema              string          `json:"schema"`
+		ConfigSource        json.RawMessage `json:"config_source"`
+		Hardware            json.RawMessage `json:"hardware"`
+		SnapshotConsistency string          `json:"snapshot_consistency"`
+		Repositories        []any           `json:"repositories"`
+		InstalledCount      int             `json:"installed_count"`
+		WorldSelections     []any           `json:"world_selections"`
+		SystemSelections    []any           `json:"system_selections"`
+		Recommendations     []struct {
 			Capability  string  `json:"capability"`
 			Disposition string  `json:"disposition"`
 			Symbol      string  `json:"symbol"`
@@ -63,6 +70,25 @@ func TestInspectionJSONEmitsVersionedDeterministicContract(t *testing.T) {
 		document.Recommendations[0].Desired != "y" ||
 		document.Recommendations[0].Action != "enable" {
 		t.Fatalf("document = %#v", document)
+	}
+	var hardwareDocument struct {
+		Schema  uint `json:"schema"`
+		Devices []struct {
+			Bus      string   `json:"bus"`
+			Address  string   `json:"address"`
+			Modules  []string `json:"modules"`
+			Firmware []string `json:"firmware"`
+		} `json:"devices"`
+	}
+	if err := json.Unmarshal(document.Hardware, &hardwareDocument); err != nil {
+		t.Fatal(err)
+	}
+	if hardwareDocument.Schema != 1 || len(hardwareDocument.Devices) != 1 ||
+		hardwareDocument.Devices[0].Bus != "pci" ||
+		hardwareDocument.Devices[0].Address != "0000:00:14.3" ||
+		len(hardwareDocument.Devices[0].Modules) != 1 ||
+		hardwareDocument.Devices[0].Firmware == nil {
+		t.Fatalf("hardware document = %#v", hardwareDocument)
 	}
 }
 
@@ -106,7 +132,21 @@ func reportFixture() app.Inspection {
 	symbol, _ := kernel.ParseSymbol("SECCOMP_FILTER")
 	current := kernel.No()
 	return app.Inspection{
-		Schema: app.InspectSchema, InstalledCount: 1,
+		Schema: app.InspectSchema,
+		ConfigSource: kernel.ConfigSource{
+			Path: "/proc/config.gz", Origin: kernel.ConfigRunningKernel, Compressed: true,
+		},
+		Hardware: hardware.Inventory{Schema: 1, Devices: []hardware.Device{{
+			Bus:    hardware.BusPCI,
+			ID:     hardware.Identifier{Address: "0000:00:14.3", Vendor: "8086", Product: "51f1"},
+			Driver: "iwlwifi", Modules: []string{"iwlwifi"}, Presence: hardware.Present,
+			Provenance: []domain.Provenance{{
+				Kind: domain.SourceDevice, Source: "/sys/bus/pci/devices/0000:00:14.3",
+				Detail: "observed in sysfs", ObservedAt: time.Unix(1_700_000_000, 0).UTC(),
+			}},
+		}}},
+		SnapshotConsistency: maizegentoo.SnapshotLocked,
+		InstalledCount:      1,
 		Recommendations: []recommend.Recommendation{{
 			Capability: "security.seccomp-filter", Disposition: domain.Required,
 			Symbol: symbol, Current: &current, Desired: kernel.Yes(),

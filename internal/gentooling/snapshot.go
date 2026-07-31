@@ -26,10 +26,28 @@ type SelectionsEvidence struct {
 	System []SelectionEvidence
 }
 
+type SnapshotConsistency string
+
+const (
+	SnapshotLocked     SnapshotConsistency = "locked-and-stabilized"
+	SnapshotStabilized SnapshotConsistency = "stabilized-lockless"
+)
+
+type RepositoryEvidence struct {
+	Name       string
+	Location   string
+	Priority   int
+	Main       bool
+	Masters    []string
+	Provenance domain.Provenance
+}
+
 type SystemSnapshotEvidence struct {
-	Installed  shared.InstalledInventory
-	Config     EffectiveConfigEvidence
-	Selections SelectionsEvidence
+	Installed    shared.InstalledInventory
+	Config       EffectiveConfigEvidence
+	Repositories []RepositoryEvidence
+	Selections   SelectionsEvidence
+	Consistency  SnapshotConsistency
 }
 
 // ReadSystemSnapshot obtains one mutually consistent view of installed
@@ -41,6 +59,22 @@ func ReadSystemSnapshot(
 	environment []string,
 	attempts int,
 ) (SystemSnapshotEvidence, error) {
+	return ReadSystemSnapshotWithConsistency(
+		ctx, paths, environment, attempts, SnapshotLocked,
+	)
+}
+
+func ReadSystemSnapshotWithConsistency(
+	ctx context.Context,
+	paths shared.SystemPaths,
+	environment []string,
+	attempts int,
+	consistency SnapshotConsistency,
+) (SystemSnapshotEvidence, error) {
+	sharedConsistency, err := sharedSnapshotConsistency(consistency)
+	if err != nil {
+		return SystemSnapshotEvidence{}, err
+	}
 	snapshot, err := shared.ReadSystemSnapshot(ctx, paths, shared.SnapshotOptions{
 		Installed: shared.InstalledOptions{
 			Integrity:       shared.RequireComplete,
@@ -49,16 +83,61 @@ func ReadSystemSnapshot(
 		Config: shared.ConfigOptions{
 			Environment: append([]string(nil), environment...),
 		},
-		Attempts: attempts,
+		Attempts: attempts, Consistency: sharedConsistency,
 	})
 	if err != nil {
 		return SystemSnapshotEvidence{}, err
 	}
 	return SystemSnapshotEvidence{
-		Installed:  snapshot.Installed,
-		Config:     configEvidence(snapshot.Config),
-		Selections: selectionsEvidence(snapshot.Selections),
+		Installed: snapshot.Installed, Config: configEvidence(snapshot.Config),
+		Repositories: repositoriesEvidence(snapshot.Repositories),
+		Selections:   selectionsEvidence(snapshot.Selections),
+		Consistency:  consistencyEvidence(snapshot.Consistency),
 	}, nil
+}
+
+func sharedSnapshotConsistency(value SnapshotConsistency) (shared.SnapshotConsistency, error) {
+	switch value {
+	case SnapshotLocked:
+		return shared.LockedAndStabilized, nil
+	case SnapshotStabilized:
+		return shared.StabilizedLockless, nil
+	default:
+		return 0, fmt.Errorf("invalid snapshot consistency %q", value)
+	}
+}
+
+func consistencyEvidence(value shared.SnapshotConsistency) SnapshotConsistency {
+	if value == shared.StabilizedLockless {
+		return SnapshotStabilized
+	}
+	return SnapshotLocked
+}
+
+func repositoriesEvidence(repositories []shared.Repository) []RepositoryEvidence {
+	result := make([]RepositoryEvidence, 0, len(repositories))
+	for _, repository := range repositories {
+		detail := "repository configuration"
+		source := repository.Source.Path
+		kind := domain.SourceConfig
+		if source == "" {
+			source = "caller"
+			kind = domain.SourceOperator
+			detail = "explicit repository path"
+		}
+		if repository.Source.Line > 0 {
+			detail = fmt.Sprintf("%s at line %d", detail, repository.Source.Line)
+		}
+		result = append(result, RepositoryEvidence{
+			Name: repository.Name, Location: repository.Location,
+			Priority: repository.Priority, Main: repository.Main,
+			Masters: append([]string(nil), repository.Masters...),
+			Provenance: domain.Provenance{
+				Kind: kind, Source: source, Detail: detail,
+			},
+		})
+	}
+	return result
 }
 
 func selectionsEvidence(selections shared.Selections) SelectionsEvidence {
