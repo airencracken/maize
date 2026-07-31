@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -107,6 +108,7 @@ func loadInspection(
 ) (app.Inspection, string, terminal.Style, bool, int) {
 	flags := flag.NewFlagSet("maize "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() { writeInspectionHelp(flags, command, stderr) }
 	root := flags.String("root", "/", "Gentoo installation root")
 	configPath := flags.String("config", "", "kernel config; default discovers running, boot, then source config")
 	sysfsPath := flags.String("sysfs", "", "sysfs root; default ROOT/sys")
@@ -180,13 +182,9 @@ func loadInspection(
 }
 
 func runGenerate(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(stderr, "Generation options: --kernel-tree PATH --output PATH [--experimental-best-guess|--experimental-minimize]")
-		_, _, _, _, code := loadInspection("generate", args, stdout, stderr)
-		if code == -1 {
-			return 0
-		}
-		return code
+	if hasHelpSwitch(args) {
+		writeGenerateHelp(stderr)
+		return 0
 	}
 	output, remaining, err := takeOption(args, "--output")
 	if err != nil || output == "" {
@@ -289,6 +287,10 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func hasHelpSwitch(args []string) bool {
+	return slices.Contains(args, "--help") || slices.Contains(args, "-h")
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	inspection, _, style, verbose, code := loadInspection("check", args, stdout, stderr)
 	if code == -1 {
@@ -344,6 +346,7 @@ func runImpact(args []string, stdout, stderr io.Writer) int {
 func runObserve(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("maize observe", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() { writeObserveHelp(flags, stderr) }
 	root := flags.String("root", "/", "system root")
 	sysfs := flags.String("sysfs", "", "sysfs root; default ROOT/sys")
 	output := flags.String("output", "", "inventory output path")
@@ -390,6 +393,7 @@ func runObserve(args []string, stdout, stderr io.Writer) int {
 func runMigrate(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("maize migrate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() { writeMigrateHelp(flags, stderr) }
 	oldKconfig := flags.String("old-kconfig", "", "old Kconfig artifact")
 	newKconfig := flags.String("new-kconfig", "", "new Kconfig artifact")
 	oldConfig := flags.String("old-config", "", "old kernel config")
@@ -622,6 +626,98 @@ func readKconfig(path string) (kernel.Catalog, error) {
 	}
 	defer file.Close()
 	return kernel.ParseKconfig(path, file)
+}
+
+func writeInspectionHelp(flags *flag.FlagSet, command string, writer io.Writer) {
+	description := map[string]string{
+		"inspect": "Inspect the current kernel, hardware, and effective Gentoo package policy.",
+		"check":   "Check whether the current kernel satisfies known hardware and package requirements.",
+		"impact":  "Explain which known requirements a proposed kernel configuration would not satisfy.",
+	}[command]
+	fmt.Fprintf(writer, "Usage:\n  maize %s [options]\n\n%s\n", command, description)
+	if command == "impact" {
+		fmt.Fprintln(writer, "\nRequired:\n  --config PATH   proposed kernel configuration to evaluate")
+	}
+	fmt.Fprintln(writer, "\nOptions:")
+	printLongFlagDefaults(flags, writer)
+	switch command {
+	case "inspect":
+		fmt.Fprintln(writer, "\nOutput includes the selected config source, hardware inventory, Gentoo snapshot, recommendations, and unresolved policy.")
+		fmt.Fprintln(writer, "Exit status: 0 success; 1 inspection/report failure; 2 invalid usage.")
+	case "check":
+		fmt.Fprintln(writer, "\nExit status: 0 satisfied; 3 known kernel changes required; 4 unresolved package policy; 1 inspection/report failure; 2 invalid usage.")
+	case "impact":
+		fmt.Fprintln(writer, "\nThis command is read-only and reports only requirements Maize can currently explain.")
+		fmt.Fprintln(writer, "Exit status: 0 report produced; 1 inspection/report failure; 2 invalid usage.")
+	}
+}
+
+func writeGenerateHelp(writer io.Writer) {
+	fmt.Fprint(writer, `Usage:
+  maize generate --kernel-tree PATH --output PATH [options]
+
+Generate a new configuration from the selected working kernel config, known
+hardware, and effective Gentoo package policy. The target kernel resolves
+dependencies with olddefconfig in an isolated directory. The source tree and
+input configuration are never modified.
+
+Required:
+  --kernel-tree PATH              target kernel source tree
+  --output PATH                   output configuration; written atomically
+
+Experimental strategies (mutually exclusive):
+  --experimental-best-guess      prune unobserved modules while retaining
+                                 removable-device, filesystem, network, and
+                                 audio fallback families
+  --experimental-minimize        omit fallback families and attempt the
+                                 smallest evidence-supported configuration
+
+Inspection options:
+  --root PATH                     Gentoo installation root (default "/")
+  --config PATH                   input config; default discovers running,
+                                 boot, then source configuration
+  --sysfs PATH                    sysfs root (default ROOT/sys)
+  --procfs PATH                   procfs root (default ROOT/proc)
+  --repository NAME=PATH          repository override; may be repeated
+  --snapshot-consistency MODE     locked or stabilized (default "locked")
+  --color MODE                    auto, always, or never (default "auto")
+  --verbose                       show all supporting and unresolved evidence
+  --format text|json              accepted for inspection compatibility;
+                                 generation status is textual
+  -h, --help                      show this help
+
+Generation refuses unresolved dynamic package policy and verifies that every
+required recommendation survives target Kconfig resolution. Experimental
+outputs are proposals: disconnected hardware cannot be proven safe.
+
+Exit status: 0 configuration written; 1 inspection, policy, validation, or
+write failure; 2 invalid usage.
+`)
+}
+
+func writeObserveHelp(flags *flag.FlagSet, writer io.Writer) {
+	fmt.Fprintln(writer, "Usage:\n  maize observe --output PATH [options]")
+	fmt.Fprintln(writer, "\nRecord a versioned JSON inventory of current sysfs hardware and loaded modules. Existing output is replaced atomically only after collection succeeds.")
+	fmt.Fprintln(writer, "\nOptions:")
+	printLongFlagDefaults(flags, writer)
+	fmt.Fprintln(writer, "\nExit status: 0 inventory written; 1 collection/write failure; 2 invalid usage.")
+}
+
+func writeMigrateHelp(flags *flag.FlagSet, writer io.Writer) {
+	fmt.Fprintln(writer, "Usage:\n  maize migrate [options]\n  maize migrate --old-kconfig PATH --new-kconfig PATH --old-config PATH --new-config PATH [options]")
+	fmt.Fprintln(writer, "\nCompare the running kernel with the newest installed kernel source by default. The explicit form compares two supplied Kconfig/config pairs; all four artifact options must be supplied together.")
+	fmt.Fprintln(writer, "\nOptions:")
+	printLongFlagDefaults(flags, writer)
+	fmt.Fprintln(writer, "\nMigration is read-only. Text output groups meaningful consequences; --verbose also includes inactive symbol churn and complete evidence.")
+	fmt.Fprintln(writer, "Exit status: 0 report produced; 1 discovery, parsing, validation, or report failure; 2 invalid usage.")
+}
+
+func printLongFlagDefaults(flags *flag.FlagSet, writer io.Writer) {
+	var defaults bytes.Buffer
+	flags.SetOutput(&defaults)
+	flags.PrintDefaults()
+	flags.SetOutput(writer)
+	fmt.Fprint(writer, strings.ReplaceAll(defaults.String(), "  -", "  --"))
 }
 
 func takeOption(args []string, name string) (string, []string, error) {

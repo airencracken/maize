@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,17 +35,60 @@ func TestHelpListsEveryCommand(t *testing.T) {
 func TestEveryDeclaredCommandExists(t *testing.T) {
 	t.Parallel()
 
-	for _, command := range []string{"inspect", "generate", "migrate", "check", "impact", "observe"} {
-		command := command
+	tests := map[string][]string{
+		"inspect":  {"Usage:", "kernel", "Gentoo", "--config", "--format", "Exit status:"},
+		"generate": {"Usage:", "--kernel-tree", "--output", "--experimental-best-guess", "--experimental-minimize", "olddefconfig", "Exit status:"},
+		"migrate":  {"Usage:", "newest installed kernel source", "--old-kconfig", "--new-kconfig", "--old-config", "--new-config", "Exit status:"},
+		"check":    {"Usage:", "hardware and package requirements", "--config", "known kernel changes required", "unresolved package policy"},
+		"impact":   {"Usage:", "Required:", "--config PATH", "read-only", "Exit status:"},
+		"observe":  {"Usage:", "--output", "sysfs hardware", "loaded modules", "atomically", "Exit status:"},
+	}
+	for command, expected := range tests {
+		command, expected := command, expected
 		t.Run(command, func(t *testing.T) {
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 			args := []string{command, "--help"}
 			exitCode := run(args, &stdout, &stderr)
-			if exitCode != 0 || !strings.Contains(stderr.String(), "Usage of maize "+command) {
+			if exitCode != 0 || stdout.Len() != 0 {
 				t.Fatalf("%s route: exit %d, stderr %q", command, exitCode, stderr.String())
 			}
+			for _, text := range expected {
+				if !strings.Contains(stderr.String(), text) {
+					t.Errorf("help missing %q:\n%s", text, stderr.String())
+				}
+			}
 		})
+	}
+}
+
+func TestShortHelpMatchesLongHelpForEverySubcommand(t *testing.T) {
+	t.Parallel()
+	for _, command := range []string{"inspect", "generate", "migrate", "check", "impact", "observe"} {
+		var long, short bytes.Buffer
+		if code := run([]string{command, "--help"}, io.Discard, &long); code != 0 {
+			t.Fatalf("%s --help exit %d", command, code)
+		}
+		if code := run([]string{command, "-h"}, io.Discard, &short); code != 0 {
+			t.Fatalf("%s -h exit %d", command, code)
+		}
+		if long.String() != short.String() {
+			t.Errorf("%s short and long help differ", command)
+		}
+	}
+}
+
+func TestGenerateHelpIsIndependentOfOptionOrderAndHostState(t *testing.T) {
+	t.Parallel()
+	var standard, reordered bytes.Buffer
+	if code := run([]string{"generate", "--help"}, io.Discard, &standard); code != 0 {
+		t.Fatalf("standard help exit %d", code)
+	}
+	if code := run([]string{"generate", "--kernel-tree", "/missing", "--help", "--output", "/forbidden"}, io.Discard, &reordered); code != 0 {
+		t.Fatalf("reordered help exit %d: %s", code, reordered.String())
+	}
+	if standard.String() != reordered.String() {
+		t.Fatal("generate help depends on option order")
 	}
 }
 
